@@ -22,13 +22,13 @@ class PlanMapBoundLoss(nn.Module):
 
     def __init__(
         self,
-        reduction='mean',
+        reduction="mean",
         loss_weight=1.0,
         map_thresh=0.5,
         lane_bound_cls_idx=2,
         dis_thresh=1.0,
         point_cloud_range=[-15.0, -30.0, -2.0, 15.0, 30.0, 2.0],
-        perception_detach=False
+        perception_detach=False,
     ):
         super(PlanMapBoundLoss, self).__init__()
         self.reduction = reduction
@@ -39,13 +39,15 @@ class PlanMapBoundLoss(nn.Module):
         self.pc_range = point_cloud_range
         self.perception_detach = perception_detach
 
-    def forward(self,
-                ego_fut_preds,
-                lane_preds,
-                lane_score_preds,
-                weight=None,
-                avg_factor=None,
-                reduction_override=None):
+    def forward(
+        self,
+        ego_fut_preds,
+        lane_preds,
+        lane_score_preds,
+        weight=None,
+        avg_factor=None,
+        reduction_override=None,
+    ):
         """Forward function.
 
         Args:
@@ -60,28 +62,38 @@ class PlanMapBoundLoss(nn.Module):
                 override the original reduction method of the loss.
                 Defaults to None.
         """
-        assert reduction_override in (None, 'none', 'mean', 'sum')
-        reduction = (
-            reduction_override if reduction_override else self.reduction)
+        assert reduction_override in (None, "none", "mean", "sum")
+        reduction = reduction_override if reduction_override else self.reduction
 
         if self.perception_detach:
             lane_preds = lane_preds.detach()
             lane_score_preds = lane_score_preds.detach()
 
         # filter lane element according to confidence score and class
-        not_lane_bound_mask = lane_score_preds[..., self.lane_bound_cls_idx] < self.map_thresh
+        not_lane_bound_mask = (
+            lane_score_preds[..., self.lane_bound_cls_idx] < self.map_thresh
+        )
         # denormalize map pts
         lane_bound_preds = lane_preds.clone()
-        lane_bound_preds[...,0:1] = (lane_bound_preds[..., 0:1] * (self.pc_range[3] -
-                                self.pc_range[0]) + self.pc_range[0])
-        lane_bound_preds[...,1:2] = (lane_bound_preds[..., 1:2] * (self.pc_range[4] -
-                                self.pc_range[1]) + self.pc_range[1])
+        lane_bound_preds[..., 0:1] = (
+            lane_bound_preds[..., 0:1] * (self.pc_range[3] - self.pc_range[0])
+            + self.pc_range[0]
+        )
+        lane_bound_preds[..., 1:2] = (
+            lane_bound_preds[..., 1:2] * (self.pc_range[4] - self.pc_range[1])
+            + self.pc_range[1]
+        )
         # pad not-lane-boundary cls and low confidence preds
         lane_bound_preds[not_lane_bound_mask] = 1e6
 
-        loss_bbox = self.loss_weight * plan_map_bound_loss(ego_fut_preds, lane_bound_preds,
-                                                           weight=weight, dis_thresh=self.dis_thresh,
-                                                           reduction=reduction, avg_factor=avg_factor)
+        loss_bbox = self.loss_weight * plan_map_bound_loss(
+            ego_fut_preds,
+            lane_bound_preds,
+            weight=weight,
+            dis_thresh=self.dis_thresh,
+            reduction=reduction,
+            avg_factor=avg_factor,
+        )
         return loss_bbox
 
 
@@ -102,7 +114,9 @@ def plan_map_bound_loss(pred, target, dis_thresh=1.0):
     ego_traj_starts = pred[:, :-1, :]
     ego_traj_ends = pred
     B, T, _ = ego_traj_ends.size()
-    padding_zeros = torch.zeros((B, 1, 2), dtype=pred.dtype, device=pred.device)  # initial position
+    padding_zeros = torch.zeros(
+        (B, 1, 2), dtype=pred.dtype, device=pred.device
+    )  # initial position
     ego_traj_starts = torch.cat((padding_zeros, ego_traj_starts), dim=1)
     _, V, P, _ = target.size()
     ego_traj_expanded = ego_traj_ends.unsqueeze(2).unsqueeze(3)  # [B, T, 1, 1, 2]
@@ -116,14 +130,15 @@ def plan_map_bound_loss(pred, target, dis_thresh=1.0):
     min_bd_insts = bd_target[batch_idxs, ts_idxs, min_inst_idxs]  # [B, T, P, 2]
     bd_inst_starts = min_bd_insts[:, :, :-1, :].flatten(0, 2)
     bd_inst_ends = min_bd_insts[:, :, 1:, :].flatten(0, 2)
-    ego_traj_starts = ego_traj_starts.unsqueeze(2).repeat(1, 1, P-1, 1).flatten(0, 2)
-    ego_traj_ends = ego_traj_ends.unsqueeze(2).repeat(1, 1, P-1, 1).flatten(0, 2)
+    ego_traj_starts = ego_traj_starts.unsqueeze(2).repeat(1, 1, P - 1, 1).flatten(0, 2)
+    ego_traj_ends = ego_traj_ends.unsqueeze(2).repeat(1, 1, P - 1, 1).flatten(0, 2)
 
-    intersect_mask = segments_intersect(ego_traj_starts, ego_traj_ends,
-                                        bd_inst_starts, bd_inst_ends)
-    intersect_mask = intersect_mask.reshape(B, T, P-1)
+    intersect_mask = segments_intersect(
+        ego_traj_starts, ego_traj_ends, bd_inst_starts, bd_inst_ends
+    )
+    intersect_mask = intersect_mask.reshape(B, T, P - 1)
     intersect_mask = intersect_mask.any(dim=-1)
-    intersect_idx = (intersect_mask == True).nonzero()
+    intersect_idx = (intersect_mask is True).nonzero()
 
     target = target.view(target.shape[0], -1, target.shape[-1])
     # [B, fut_ts, num_vec*num_pts]
@@ -139,7 +154,7 @@ def plan_map_bound_loss(pred, target, dis_thresh=1.0):
     loss[unsafe_idx] = dis_thresh - loss[unsafe_idx]
 
     for i in range(len(intersect_idx)):
-        loss[intersect_idx[i, 0], intersect_idx[i, 1]:] = 0
+        loss[intersect_idx[i, 0], intersect_idx[i, 1] :] = 0
 
     return loss
 
@@ -159,15 +174,18 @@ def segments_intersect(line1_start, line1_end, line2_start, line2_end):
     parallel_mask = torch.logical_not(det_mask)
 
     # Calculating intersection parameters
-    t1 = ((line2_start[:, 0] - line1_start[:, 0]) * dy2 
-          - (line2_start[:, 1] - line1_start[:, 1]) * dx2) / det
-    t2 = ((line2_start[:, 0] - line1_start[:, 0]) * dy1 
-          - (line2_start[:, 1] - line1_start[:, 1]) * dx1) / det
+    t1 = (
+        (line2_start[:, 0] - line1_start[:, 0]) * dy2
+        - (line2_start[:, 1] - line1_start[:, 1]) * dx2
+    ) / det
+    t2 = (
+        (line2_start[:, 0] - line1_start[:, 0]) * dy1
+        - (line2_start[:, 1] - line1_start[:, 1]) * dx1
+    ) / det
 
     # Checking intersection conditions
     intersect_mask = torch.logical_and(
-        torch.logical_and(t1 >= 0, t1 <= 1),
-        torch.logical_and(t2 >= 0, t2 <= 1)
+        torch.logical_and(t1 >= 0, t1 <= 1), torch.logical_and(t2 >= 0, t2 <= 1)
     )
 
     # Handling parallel or coincident lines
@@ -192,12 +210,12 @@ class PlanCollisionLoss(nn.Module):
 
     def __init__(
         self,
-        reduction='mean',
+        reduction="mean",
         loss_weight=1.0,
         agent_thresh=0.5,
         x_dis_thresh=1.5,
         y_dis_thresh=3.0,
-        point_cloud_range = [-15.0, -30.0, -2.0, 15.0, 30.0, 2.0]
+        point_cloud_range=[-15.0, -30.0, -2.0, 15.0, 30.0, 2.0],
     ):
         super(PlanCollisionLoss, self).__init__()
         self.reduction = reduction
@@ -207,15 +225,17 @@ class PlanCollisionLoss(nn.Module):
         self.y_dis_thresh = y_dis_thresh
         self.pc_range = point_cloud_range
 
-    def forward(self,
-                ego_fut_preds,
-                agent_preds,
-                agent_fut_preds,
-                agent_score_preds,
-                agent_fut_cls_preds,
-                weight=None,
-                avg_factor=None,
-                reduction_override=None):
+    def forward(
+        self,
+        ego_fut_preds,
+        agent_preds,
+        agent_fut_preds,
+        agent_score_preds,
+        agent_fut_cls_preds,
+        weight=None,
+        avg_factor=None,
+        reduction_override=None,
+    ):
         """Forward function.
 
         Args:
@@ -232,9 +252,8 @@ class PlanCollisionLoss(nn.Module):
                 override the original reduction method of the loss.
                 Defaults to None.
         """
-        assert reduction_override in (None, 'none', 'mean', 'sum')
-        reduction = (
-            reduction_override if reduction_override else self.reduction)
+        assert reduction_override in (None, "none", "mean", "sum")
+        reduction = reduction_override if reduction_override else self.reduction
 
         # filter agent element according to confidence score
         agent_max_score_preds, agent_max_score_idxs = agent_score_preds.max(dim=-1)
@@ -247,26 +266,29 @@ class PlanCollisionLoss(nn.Module):
         # only use best mode pred
         best_mode_idxs = torch.argmax(agent_fut_cls_preds, dim=-1).tolist()
         batch_idxs = [[i] for i in range(agent_fut_cls_preds.shape[0])]
-        agent_num_idxs = [[i for i in range(agent_fut_cls_preds.shape[1])] for j in range(agent_fut_cls_preds.shape[0])]
+        agent_num_idxs = [
+            [i for i in range(agent_fut_cls_preds.shape[1])]
+            for j in range(agent_fut_cls_preds.shape[0])
+        ]
         agent_fut_preds = agent_fut_preds[batch_idxs, agent_num_idxs, best_mode_idxs]
 
-        loss_bbox = self.loss_weight * plan_col_loss(ego_fut_preds, agent_preds,
-                                                           agent_fut_preds=agent_fut_preds, weight=weight,
-                                                           x_dis_thresh=self.x_dis_thresh,
-                                                           y_dis_thresh=self.y_dis_thresh,
-                                                           reduction=reduction, avg_factor=avg_factor)
+        loss_bbox = self.loss_weight * plan_col_loss(
+            ego_fut_preds,
+            agent_preds,
+            agent_fut_preds=agent_fut_preds,
+            weight=weight,
+            x_dis_thresh=self.x_dis_thresh,
+            y_dis_thresh=self.y_dis_thresh,
+            reduction=reduction,
+            avg_factor=avg_factor,
+        )
         return loss_bbox
 
 
 @mmcv.jit(derivate=True, coderize=True)
 @weighted_loss
 def plan_col_loss(
-    pred,
-    target,
-    agent_fut_preds,
-    x_dis_thresh=1.5,
-    y_dis_thresh=3.0,
-    dis_thresh=3.0
+    pred, target, agent_fut_preds, x_dis_thresh=1.5, y_dis_thresh=3.0, dis_thresh=3.0
 ):
     """Planning ego-agent collsion constraint.
 
@@ -330,12 +352,12 @@ class PlanMapDirectionLoss(nn.Module):
 
     def __init__(
         self,
-        reduction='mean',
+        reduction="mean",
         loss_weight=1.0,
         map_thresh=0.5,
         dis_thresh=2.0,
         lane_div_cls_idx=0,
-        point_cloud_range = [-15.0, -30.0, -2.0, 15.0, 30.0, 2.0]
+        point_cloud_range=[-15.0, -30.0, -2.0, 15.0, 30.0, 2.0],
     ):
         super(PlanMapDirectionLoss, self).__init__()
         self.reduction = reduction
@@ -345,13 +367,15 @@ class PlanMapDirectionLoss(nn.Module):
         self.lane_div_cls_idx = lane_div_cls_idx
         self.pc_range = point_cloud_range
 
-    def forward(self,
-                ego_fut_preds,
-                lane_preds,
-                lane_score_preds,
-                weight=None,
-                avg_factor=None,
-                reduction_override=None):
+    def forward(
+        self,
+        ego_fut_preds,
+        lane_preds,
+        lane_score_preds,
+        weight=None,
+        avg_factor=None,
+        reduction_override=None,
+    ):
         """Forward function.
 
         Args:
@@ -366,24 +390,34 @@ class PlanMapDirectionLoss(nn.Module):
                 override the original reduction method of the loss.
                 Defaults to None.
         """
-        assert reduction_override in (None, 'none', 'mean', 'sum')
-        reduction = (
-            reduction_override if reduction_override else self.reduction)
+        assert reduction_override in (None, "none", "mean", "sum")
+        reduction = reduction_override if reduction_override else self.reduction
 
         # filter lane element according to confidence score and class
-        not_lane_div_mask = lane_score_preds[..., self.lane_div_cls_idx] < self.map_thresh
+        not_lane_div_mask = (
+            lane_score_preds[..., self.lane_div_cls_idx] < self.map_thresh
+        )
         # denormalize map pts
         lane_div_preds = lane_preds.clone()
-        lane_div_preds[...,0:1] = (lane_div_preds[..., 0:1] * (self.pc_range[3] -
-                                self.pc_range[0]) + self.pc_range[0])
-        lane_div_preds[...,1:2] = (lane_div_preds[..., 1:2] * (self.pc_range[4] -
-                                self.pc_range[1]) + self.pc_range[1])
+        lane_div_preds[..., 0:1] = (
+            lane_div_preds[..., 0:1] * (self.pc_range[3] - self.pc_range[0])
+            + self.pc_range[0]
+        )
+        lane_div_preds[..., 1:2] = (
+            lane_div_preds[..., 1:2] * (self.pc_range[4] - self.pc_range[1])
+            + self.pc_range[1]
+        )
         # pad not-lane-divider cls and low confidence preds
         lane_div_preds[not_lane_div_mask] = 1e6
 
-        loss_bbox = self.loss_weight * plan_map_dir_loss(ego_fut_preds, lane_div_preds,
-                                                           weight=weight, dis_thresh=self.dis_thresh,
-                                                           reduction=reduction, avg_factor=avg_factor)
+        loss_bbox = self.loss_weight * plan_map_dir_loss(
+            ego_fut_preds,
+            lane_div_preds,
+            weight=weight,
+            dis_thresh=self.dis_thresh,
+            reduction=reduction,
+            avg_factor=avg_factor,
+        )
         return loss_bbox
 
 
@@ -412,19 +446,23 @@ def plan_map_dir_loss(pred, target, dis_thresh=2.0):
     min_inst_idxs = torch.argmin(dist, dim=-1).tolist()
     batch_idxs = [[i] for i in range(dist.shape[0])]
     ts_idxs = [[i for i in range(dist.shape[1])] for j in range(dist.shape[0])]
-    target_map_inst = target[batch_idxs, ts_idxs, min_inst_idxs]  # [B, fut_ts, num_pts, 2]
+    target_map_inst = target[
+        batch_idxs, ts_idxs, min_inst_idxs
+    ]  # [B, fut_ts, num_pts, 2]
 
     # calculate distance
     dist = torch.linalg.norm(pred[:, :, None, :] - target_map_inst, dim=-1)
     min_pts_idxs = torch.argmin(dist, dim=-1)
     min_pts_next_idxs = min_pts_idxs.clone()
-    is_end_point = (min_pts_next_idxs == num_map_pts-1)
-    not_end_point = (min_pts_next_idxs != num_map_pts-1)
+    is_end_point = min_pts_next_idxs == num_map_pts - 1
+    not_end_point = min_pts_next_idxs != num_map_pts - 1
     min_pts_next_idxs[is_end_point] = num_map_pts - 2
     min_pts_next_idxs[not_end_point] = min_pts_next_idxs[not_end_point] + 1
     min_pts_idxs = min_pts_idxs.tolist()
     min_pts_next_idxs = min_pts_next_idxs.tolist()
-    traj_yaw = torch.atan2(torch.diff(pred[..., 1]), torch.diff(pred[..., 0]))  # [B, fut_ts-1]
+    traj_yaw = torch.atan2(
+        torch.diff(pred[..., 1]), torch.diff(pred[..., 0])
+    )  # [B, fut_ts-1]
     # last ts yaw assume same as previous
     traj_yaw = torch.cat([traj_yaw, traj_yaw[:, [-1]]], dim=-1)  # [B, fut_ts]
     min_pts = target_map_inst[batch_idxs, ts_idxs, min_pts_idxs]
@@ -433,12 +471,14 @@ def plan_map_dir_loss(pred, target, dis_thresh=2.0):
     min_pts = min_pts.unsqueeze(2)
     min_pts_next = target_map_inst[batch_idxs, ts_idxs, min_pts_next_idxs].unsqueeze(2)
     map_pts = torch.cat([min_pts, min_pts_next], dim=2)
-    lane_yaw = torch.atan2(torch.diff(map_pts[..., 1]).squeeze(-1), torch.diff(map_pts[..., 0]).squeeze(-1))  # [B, fut_ts]
+    lane_yaw = torch.atan2(
+        torch.diff(map_pts[..., 1]).squeeze(-1), torch.diff(map_pts[..., 0]).squeeze(-1)
+    )  # [B, fut_ts]
     yaw_diff = traj_yaw - lane_yaw
-    yaw_diff[yaw_diff > math.pi] =  yaw_diff[yaw_diff > math.pi] - math.pi
-    yaw_diff[yaw_diff > math.pi/2] = yaw_diff[yaw_diff > math.pi/2] - math.pi
+    yaw_diff[yaw_diff > math.pi] = yaw_diff[yaw_diff > math.pi] - math.pi
+    yaw_diff[yaw_diff > math.pi / 2] = yaw_diff[yaw_diff > math.pi / 2] - math.pi
     yaw_diff[yaw_diff < -math.pi] = yaw_diff[yaw_diff < -math.pi] + math.pi
-    yaw_diff[yaw_diff < -math.pi/2] = yaw_diff[yaw_diff < -math.pi/2] + math.pi
+    yaw_diff[yaw_diff < -math.pi / 2] = yaw_diff[yaw_diff < -math.pi / 2] + math.pi
     yaw_diff[dist_mask] = 0  # loss = 0 if no lane around ego
     yaw_diff[static_mask] = 0  # loss = 0 if ego is static
 

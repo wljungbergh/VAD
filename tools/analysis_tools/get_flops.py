@@ -15,7 +15,8 @@ from projects.mmdet3d_plugin.datasets.builder import build_dataloader
 #     raise ImportError('Please upgrade mmcv to >0.6.2')
 
 import sys
-sys.path.append('.')
+
+sys.path.append(".")
 
 
 from functools import partial
@@ -27,14 +28,16 @@ import torch.nn as nn
 import mmcv
 
 
-def get_model_complexity_info(model,
-                              data,
-                              input_shape=(1280, 720),
-                              print_per_layer_stat=True,
-                              as_strings=True,
-                              input_constructor=None,
-                              flush=False,
-                              ost=sys.stdout):
+def get_model_complexity_info(
+    model,
+    data,
+    input_shape=(1280, 720),
+    print_per_layer_stat=True,
+    as_strings=True,
+    input_constructor=None,
+    flush=False,
+    ost=sys.stdout,
+):
     """Get complexity information of a model.
 
     This method can calculate FLOPs and parameter counts of a model with
@@ -89,7 +92,8 @@ def get_model_complexity_info(model,
             batch = torch.ones(()).new_empty(
                 (1, 6, 3, *input_shape),
                 dtype=next(flops_model.parameters()).dtype,
-                device=next(flops_model.parameters()).device)
+                device=next(flops_model.parameters()).device,
+            )
         except StopIteration:
             # Avoid StopIteration for models which have no parameters,
             # like `nn.Relu()`, `nn.AvgPool2d`, etc.
@@ -107,8 +111,8 @@ def get_model_complexity_info(model,
         # _ = flops_model(rescale=True, img=img, img_metas=img_metas, points=points,
         #                 fut_valid_flag=fut_valid_flag, ego_his_trajs=ego_his_trajs, ego_lcf_feat=ego_lcf_feat)
 
-        img_metas = [data['img_metas'][0].data[0]]
-        img = data['img'][0].data[0]
+        img_metas = [data["img_metas"][0].data[0]]
+        img = data["img"][0].data[0]
         img = img.to(batch.device)
 
         _ = flops_model(rescale=True, img=img, img_metas=img_metas)
@@ -116,7 +120,8 @@ def get_model_complexity_info(model,
     flops_count, params_count = flops_model.compute_average_flops_cost()
     if print_per_layer_stat:
         print_model_with_flops(
-            flops_model, flops_count, params_count, ost=ost, flush=flush)
+            flops_model, flops_count, params_count, ost=ost, flush=flush
+        )
     flops_model.stop_flops_count()
 
     if as_strings:
@@ -125,7 +130,7 @@ def get_model_complexity_info(model,
     return flops_count, params_count
 
 
-def flops_to_string(flops, units='GFLOPs', precision=2):
+def flops_to_string(flops, units="GFLOPs", precision=2):
     """Convert FLOPs number into a string.
 
     Note that Here we take a multiply-add counts as one FLOP.
@@ -150,22 +155,22 @@ def flops_to_string(flops, units='GFLOPs', precision=2):
     """
     if units is None:
         if flops // 10**9 > 0:
-            return str(round(flops / 10.**9, precision)) + ' GFLOPs'
+            return str(round(flops / 10.0**9, precision)) + " GFLOPs"
         elif flops // 10**6 > 0:
-            return str(round(flops / 10.**6, precision)) + ' MFLOPs'
+            return str(round(flops / 10.0**6, precision)) + " MFLOPs"
         elif flops // 10**3 > 0:
-            return str(round(flops / 10.**3, precision)) + ' KFLOPs'
+            return str(round(flops / 10.0**3, precision)) + " KFLOPs"
         else:
-            return str(flops) + ' FLOPs'
+            return str(flops) + " FLOPs"
     else:
-        if units == 'GFLOPs':
-            return str(round(flops / 10.**9, precision)) + ' ' + units
-        elif units == 'MFLOPs':
-            return str(round(flops / 10.**6, precision)) + ' ' + units
-        elif units == 'KFLOPs':
-            return str(round(flops / 10.**3, precision)) + ' ' + units
+        if units == "GFLOPs":
+            return str(round(flops / 10.0**9, precision)) + " " + units
+        elif units == "MFLOPs":
+            return str(round(flops / 10.0**6, precision)) + " " + units
+        elif units == "KFLOPs":
+            return str(round(flops / 10.0**3, precision)) + " " + units
         else:
-            return str(flops) + ' FLOPs'
+            return str(flops) + " FLOPs"
 
 
 def params_to_string(num_params, units=None, precision=2):
@@ -191,27 +196,29 @@ def params_to_string(num_params, units=None, precision=2):
     """
     if units is None:
         if num_params // 10**6 > 0:
-            return str(round(num_params / 10**6, precision)) + ' M'
+            return str(round(num_params / 10**6, precision)) + " M"
         elif num_params // 10**3:
-            return str(round(num_params / 10**3, precision)) + ' k'
+            return str(round(num_params / 10**3, precision)) + " k"
         else:
             return str(num_params)
     else:
-        if units == 'M':
-            return str(round(num_params / 10.**6, precision)) + ' ' + units
-        elif units == 'K':
-            return str(round(num_params / 10.**3, precision)) + ' ' + units
+        if units == "M":
+            return str(round(num_params / 10.0**6, precision)) + " " + units
+        elif units == "K":
+            return str(round(num_params / 10.0**3, precision)) + " " + units
         else:
             return str(num_params)
 
 
-def print_model_with_flops(model,
-                           total_flops,
-                           total_params,
-                           units='GFLOPs',
-                           precision=3,
-                           ost=sys.stdout,
-                           flush=False):
+def print_model_with_flops(
+    model,
+    total_flops,
+    total_params,
+    units="GFLOPs",
+    precision=3,
+    ost=sys.stdout,
+    flush=False,
+):
     """Print a model with FLOPs for each layer.
 
     Args:
@@ -283,15 +290,19 @@ def print_model_with_flops(model,
     def flops_repr(self):
         accumulated_num_params = self.accumulate_params()
         accumulated_flops_cost = self.accumulate_flops()
-        return ', '.join([
-            params_to_string(
-                accumulated_num_params, units='M', precision=precision),
-            '{:.3%} Params'.format(accumulated_num_params / total_params),
-            flops_to_string(
-                accumulated_flops_cost, units=units, precision=precision),
-            '{:.3%} FLOPs'.format(accumulated_flops_cost / total_flops),
-            self.original_extra_repr()
-        ])
+        return ", ".join(
+            [
+                params_to_string(
+                    accumulated_num_params, units="M", precision=precision
+                ),
+                "{:.3%} Params".format(accumulated_num_params / total_params),
+                flops_to_string(
+                    accumulated_flops_cost, units=units, precision=precision
+                ),
+                "{:.3%} FLOPs".format(accumulated_flops_cost / total_flops),
+                self.original_extra_repr(),
+            ]
+        )
 
     def add_extra_repr(m):
         m.accumulate_flops = accumulate_flops.__get__(m)
@@ -303,10 +314,10 @@ def print_model_with_flops(model,
             assert m.extra_repr != m.original_extra_repr
 
     def del_extra_repr(m):
-        if hasattr(m, 'original_extra_repr'):
+        if hasattr(m, "original_extra_repr"):
             m.extra_repr = m.original_extra_repr
             del m.original_extra_repr
-        if hasattr(m, 'accumulate_flops'):
+        if hasattr(m, "accumulate_flops"):
             del m.accumulate_flops
 
     model.apply(add_extra_repr)
@@ -330,14 +341,12 @@ def get_model_parameters_number(model):
 def add_flops_counting_methods(net_main_module):
     # adding additional methods to the existing module object,
     # this is done this way so that each function has access to self object
-    net_main_module.start_flops_count = start_flops_count.__get__(
-        net_main_module)
-    net_main_module.stop_flops_count = stop_flops_count.__get__(
-        net_main_module)
-    net_main_module.reset_flops_count = reset_flops_count.__get__(
-        net_main_module)
-    net_main_module.compute_average_flops_cost = compute_average_flops_cost.__get__(  # noqa: E501
-        net_main_module)
+    net_main_module.start_flops_count = start_flops_count.__get__(net_main_module)
+    net_main_module.stop_flops_count = stop_flops_count.__get__(net_main_module)
+    net_main_module.reset_flops_count = reset_flops_count.__get__(net_main_module)
+    net_main_module.compute_average_flops_cost = compute_average_flops_cost.__get__(
+        net_main_module
+    )  # noqa: E501
 
     net_main_module.reset_flops_count()
 
@@ -373,12 +382,13 @@ def start_flops_count(self):
 
     def add_flops_counter_hook_function(module):
         if is_supported_instance(module):
-            if hasattr(module, '__flops_handle__'):
+            if hasattr(module, "__flops_handle__"):
                 return
 
             else:
                 handle = module.register_forward_hook(
-                    get_modules_mapping()[type(module)])
+                    get_modules_mapping()[type(module)]
+                )
 
             module.__flops_handle__ = handle
 
@@ -428,7 +438,8 @@ def relu_flops_counter_hook(module, input, output):
 def linear_flops_counter_hook(module, input, output):
     input = input[0]
     output_last_dim = output.shape[
-        -1]  # pytorch checks dimensions, so here we don't care much
+        -1
+    ]  # pytorch checks dimensions, so here we don't care much
     module.__flops__ += int(np.prod(input.shape) * output_last_dim)
 
 
@@ -441,8 +452,7 @@ def norm_flops_counter_hook(module, input, output):
     input = input[0]
 
     batch_flops = np.prod(input.shape)
-    if (getattr(module, 'affine', False)
-            or getattr(module, 'elementwise_affine', False)):
+    if getattr(module, "affine", False) or getattr(module, "elementwise_affine", False):
         batch_flops *= 2
     module.__flops__ += int(batch_flops)
 
@@ -461,7 +471,8 @@ def deconv_flops_counter_hook(conv_module, input, output):
 
     filters_per_channel = out_channels // groups
     conv_per_position_flops = (
-        kernel_height * kernel_width * in_channels * filters_per_channel)
+        kernel_height * kernel_width * in_channels * filters_per_channel
+    )
 
     active_elements_count = batch_size * input_height * input_width
     overall_conv_flops = conv_per_position_flops * active_elements_count
@@ -487,8 +498,9 @@ def conv_flops_counter_hook(conv_module, input, output):
     groups = conv_module.groups
 
     filters_per_channel = out_channels // groups
-    conv_per_position_flops = int(
-        np.prod(kernel_dims)) * in_channels * filters_per_channel
+    conv_per_position_flops = (
+        int(np.prod(kernel_dims)) * in_channels * filters_per_channel
+    )
 
     active_elements_count = batch_size * int(np.prod(output_dims))
 
@@ -497,7 +509,6 @@ def conv_flops_counter_hook(conv_module, input, output):
     bias_flops = 0
 
     if conv_module.bias is not None:
-
         bias_flops = out_channels * active_elements_count
 
     overall_flops = overall_conv_flops + bias_flops
@@ -513,18 +524,19 @@ def batch_counter_hook(module, input, output):
         batch_size = len(input)
     else:
         pass
-        print('Warning! No positional inputs found for a module, '
-              'assuming batch size is 1.')
+        print(
+            "Warning! No positional inputs found for a module, "
+            "assuming batch size is 1."
+        )
     module.__batch_counter__ += batch_size
 
 
 def add_batch_counter_variables_or_reset(module):
-
     module.__batch_counter__ = 0
 
 
 def add_batch_counter_hook_function(module):
-    if hasattr(module, '__batch_counter_handle__'):
+    if hasattr(module, "__batch_counter_handle__"):
         return
 
     handle = module.register_forward_hook(batch_counter_hook)
@@ -532,17 +544,20 @@ def add_batch_counter_hook_function(module):
 
 
 def remove_batch_counter_hook_function(module):
-    if hasattr(module, '__batch_counter_handle__'):
+    if hasattr(module, "__batch_counter_handle__"):
         module.__batch_counter_handle__.remove()
         del module.__batch_counter_handle__
 
 
 def add_flops_counter_variable_or_reset(module):
     if is_supported_instance(module):
-        if hasattr(module, '__flops__') or hasattr(module, '__params__'):
-            print('Warning: variables __flops__ or __params__ are already '
-                  'defined for the module' + type(module).__name__ +
-                  ' ptflops can affect your code!')
+        if hasattr(module, "__flops__") or hasattr(module, "__params__"):
+            print(
+                "Warning: variables __flops__ or __params__ are already "
+                "defined for the module"
+                + type(module).__name__
+                + " ptflops can affect your code!"
+            )
         module.__flops__ = 0
         module.__params__ = get_model_parameters_number(module)
 
@@ -555,7 +570,7 @@ def is_supported_instance(module):
 
 def remove_flops_counter_hook_function(module):
     if is_supported_instance(module):
-        if hasattr(module, '__flops_handle__'):
+        if hasattr(module, "__flops_handle__"):
             module.__flops_handle__.remove()
             del module.__flops_handle__
 
@@ -610,100 +625,105 @@ def get_modules_mapping():
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Train a detector')
-    parser.add_argument('config', help='train config file path')
+    parser = argparse.ArgumentParser(description="Train a detector")
+    parser.add_argument("config", help="train config file path")
     parser.add_argument(
-        '--shape',
+        "--shape",
         type=int,
-        nargs='+',
+        nargs="+",
         default=[40000, 4],
-        help='input point cloud size')
+        help="input point cloud size",
+    )
     parser.add_argument(
-        '--modality',
+        "--modality",
         type=str,
-        default='point',
-        choices=['point', 'image', 'multi'],
-        help='input data modality')
+        default="point",
+        choices=["point", "image", "multi"],
+        help="input data modality",
+    )
     parser.add_argument(
-        '--cfg-options',
-        nargs='+',
+        "--cfg-options",
+        nargs="+",
         action=DictAction,
-        help='override some settings in the used config, the key-value pair '
-        'in xxx=yyy format will be merged into config file. If the value to '
+        help="override some settings in the used config, the key-value pair "
+        "in xxx=yyy format will be merged into config file. If the value to "
         'be overwritten is a list, it should be like key="[a,b]" or key=a,b '
         'It also allows nested list/tuple values, e.g. key="[(a,b),(c,d)]" '
-        'Note that the quotation marks are necessary and that no white space '
-        'is allowed.')
+        "Note that the quotation marks are necessary and that no white space "
+        "is allowed.",
+    )
     args = parser.parse_args()
     return args
 
 
 def main():
-
     args = parse_args()
 
-    if args.modality == 'point':
-        assert len(args.shape) == 2, 'invalid input shape'
+    if args.modality == "point":
+        assert len(args.shape) == 2, "invalid input shape"
         input_shape = tuple(args.shape)
-    elif args.modality == 'image':
+    elif args.modality == "image":
         if len(args.shape) == 1:
             input_shape = (3, args.shape[0], args.shape[0])
         elif len(args.shape) == 2:
-            input_shape = (3, ) + tuple(args.shape)
+            input_shape = (3,) + tuple(args.shape)
         else:
-            raise ValueError('invalid input shape')
-    elif args.modality == 'multi':
+            raise ValueError("invalid input shape")
+    elif args.modality == "multi":
         raise NotImplementedError(
-            'FLOPs counter is currently not supported for models with '
-            'multi-modality input')
+            "FLOPs counter is currently not supported for models with "
+            "multi-modality input"
+        )
 
     cfg = Config.fromfile(args.config)
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
 
-    if hasattr(cfg, 'plugin'):
+    if hasattr(cfg, "plugin"):
         if cfg.plugin:
             import importlib
-            if hasattr(cfg, 'plugin_dir'):
+
+            if hasattr(cfg, "plugin_dir"):
                 plugin_dir = cfg.plugin_dir
                 _module_dir = os.path.dirname(plugin_dir)
-                _module_dir = _module_dir.split('/')
+                _module_dir = _module_dir.split("/")
                 _module_path = _module_dir[0]
 
                 for m in _module_dir[1:]:
-                    _module_path = _module_path + '.' + m
+                    _module_path = _module_path + "." + m
                 print(_module_path)
-                plg_lib = importlib.import_module(_module_path)
+                importlib.import_module(_module_path)
             else:
                 # import dir is the dirpath for the config file
                 _module_dir = os.path.dirname(args.config)
-                _module_dir = _module_dir.split('/')
+                _module_dir = _module_dir.split("/")
                 _module_path = _module_dir[0]
                 for m in _module_dir[1:]:
-                    _module_path = _module_path + '.' + m
+                    _module_path = _module_path + "." + m
                 print(_module_path)
-                plg_lib = importlib.import_module(_module_path)
+                importlib.import_module(_module_path)
 
     samples_per_gpu = 1
     from mmdet.datasets import replace_ImageToTensor
+
     if isinstance(cfg.data.test, dict):
         cfg.data.test.test_mode = True
-        samples_per_gpu = cfg.data.test.pop('samples_per_gpu', 1)
+        samples_per_gpu = cfg.data.test.pop("samples_per_gpu", 1)
         if samples_per_gpu > 1:
             # Replace 'ImageToTensor' to 'DefaultFormatBundle'
-            cfg.data.test.pipeline = replace_ImageToTensor(
-                cfg.data.test.pipeline)
+            cfg.data.test.pipeline = replace_ImageToTensor(cfg.data.test.pipeline)
     elif isinstance(cfg.data.test, list):
         for ds_cfg in cfg.data.test:
             ds_cfg.test_mode = True
         samples_per_gpu = max(
-            [ds_cfg.pop('samples_per_gpu', 1) for ds_cfg in cfg.data.test])
+            [ds_cfg.pop("samples_per_gpu", 1) for ds_cfg in cfg.data.test]
+        )
         if samples_per_gpu > 1:
             for ds_cfg in cfg.data.test:
                 ds_cfg.pipeline = replace_ImageToTensor(ds_cfg.pipeline)
 
     dataset = build_dataset(cfg.data.test)
-    dataset.is_vis_on_test = True #TODO, this is a hack
+    dataset.is_vis_on_test = True  # TODO, this is a hack
     data_loader = build_dataloader(
         dataset,
         samples_per_gpu=1,
@@ -715,33 +735,38 @@ def main():
     for i, data in enumerate(data_loader):
         # if ~(data['map_gt_labels_3d'].data[0][0] != -1).any():
         #     continue
-        img = data['img'][0].data[0]
-        img_metas = data['img_metas'][0].data[0]
+        data["img"][0].data[0]
+        data["img_metas"][0].data[0]
         break
 
     model = build_model(
-        cfg.model,
-        train_cfg=cfg.get('train_cfg'),
-        test_cfg=cfg.get('test_cfg'))
+        cfg.model, train_cfg=cfg.get("train_cfg"), test_cfg=cfg.get("test_cfg")
+    )
     if torch.cuda.is_available():
         model.cuda()
     model.eval()
 
-    if hasattr(model, 'forward_dummy'):
+    if hasattr(model, "forward_dummy"):
         model.forward = model.forward_dummy
     else:
         raise NotImplementedError(
-            'FLOPs counter is currently not supported for {}'.format(
-                model.__class__.__name__))
+            "FLOPs counter is currently not supported for {}".format(
+                model.__class__.__name__
+            )
+        )
 
     flops, params = get_model_complexity_info(model, data)
-    split_line = '=' * 30
-    print(f'{split_line}\nInput shape: {input_shape}\n'
-          f'Flops: {flops}\nParams: {params}\n{split_line}')
-    print('!!!Please be cautious if you use the results in papers. '
-          'You may need to check if all ops are supported and verify that the '
-          'flops computation is correct.')
+    split_line = "=" * 30
+    print(
+        f"{split_line}\nInput shape: {input_shape}\n"
+        f"Flops: {flops}\nParams: {params}\n{split_line}"
+    )
+    print(
+        "!!!Please be cautious if you use the results in papers. "
+        "You may need to check if all ops are supported and verify that the "
+        "flops computation is correct."
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

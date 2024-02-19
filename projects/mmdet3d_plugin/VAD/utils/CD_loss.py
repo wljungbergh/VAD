@@ -1,7 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import torch
 from torch import nn as nn
-from torch.nn.functional import l1_loss, mse_loss, smooth_l1_loss
+from torch.nn.functional import smooth_l1_loss
 
 from mmdet.models.builder import LOSSES
 from mmdet.models import weighted_loss
@@ -30,8 +30,9 @@ def reduce_loss(loss, reduction):
     elif reduction_enum == 2:
         return loss.sum()
 
+
 @mmcv.jit(derivate=True, coderize=True)
-def custom_weight_dir_reduce_loss(loss, weight=None, reduction='mean', avg_factor=None):
+def custom_weight_dir_reduce_loss(loss, weight=None, reduction="mean", avg_factor=None):
     """Apply element-wise weight and reduce loss.
 
     Args:
@@ -49,22 +50,23 @@ def custom_weight_dir_reduce_loss(loss, weight=None, reduction='mean', avg_facto
 
     # if avg_factor is not specified, just reduce the loss
     if avg_factor is None:
-        raise ValueError('avg_factor should not be none for OrderedPtsL1Loss')
+        raise ValueError("avg_factor should not be none for OrderedPtsL1Loss")
         # loss = reduce_loss(loss, reduction)
     else:
         # if reduction is mean, then average the loss by avg_factor
-        if reduction == 'mean':
+        if reduction == "mean":
             # import pdb;pdb.set_trace()
             # loss = loss.permute(1,0,2,3).contiguous()
             loss = loss.sum()
             loss = loss / avg_factor
         # if reduction is 'none', then do nothing, otherwise raise an error
-        elif reduction != 'none':
+        elif reduction != "none":
             raise ValueError('avg_factor can not be used with reduction="sum"')
     return loss
 
+
 @mmcv.jit(derivate=True, coderize=True)
-def custom_weight_reduce_loss(loss, weight=None, reduction='mean', avg_factor=None):
+def custom_weight_reduce_loss(loss, weight=None, reduction="mean", avg_factor=None):
     """Apply element-wise weight and reduce loss.
 
     Args:
@@ -82,19 +84,20 @@ def custom_weight_reduce_loss(loss, weight=None, reduction='mean', avg_factor=No
 
     # if avg_factor is not specified, just reduce the loss
     if avg_factor is None:
-        raise ValueError('avg_factor should not be none for OrderedPtsL1Loss')
+        raise ValueError("avg_factor should not be none for OrderedPtsL1Loss")
         # loss = reduce_loss(loss, reduction)
     else:
         # if reduction is mean, then average the loss by avg_factor
-        if reduction == 'mean':
+        if reduction == "mean":
             # import pdb;pdb.set_trace()
-            loss = loss.permute(1,0,2,3).contiguous()
-            loss = loss.sum((1,2,3))
+            loss = loss.permute(1, 0, 2, 3).contiguous()
+            loss = loss.sum((1, 2, 3))
             loss = loss / avg_factor
         # if reduction is 'none', then do nothing, otherwise raise an error
-        elif reduction != 'none':
+        elif reduction != "none":
             raise ValueError('avg_factor can not be used with reduction="sum"')
     return loss
+
 
 def custom_weighted_loss(loss_func):
     """Create a weighted version of a given loss function.
@@ -128,12 +131,7 @@ def custom_weighted_loss(loss_func):
     """
 
     @functools.wraps(loss_func)
-    def wrapper(pred,
-                target,
-                weight=None,
-                reduction='mean',
-                avg_factor=None,
-                **kwargs):
+    def wrapper(pred, target, weight=None, reduction="mean", avg_factor=None, **kwargs):
         # get element-wise loss
         loss = loss_func(pred, target, **kwargs)
         loss = custom_weight_reduce_loss(loss, weight, reduction, avg_factor)
@@ -174,18 +172,14 @@ def custom_weighted_dir_loss(loss_func):
     """
 
     @functools.wraps(loss_func)
-    def wrapper(pred,
-                target,
-                weight=None,
-                reduction='mean',
-                avg_factor=None,
-                **kwargs):
+    def wrapper(pred, target, weight=None, reduction="mean", avg_factor=None, **kwargs):
         # get element-wise loss
         loss = loss_func(pred, target, **kwargs)
         loss = custom_weight_dir_reduce_loss(loss, weight, reduction, avg_factor)
         return loss
 
     return wrapper
+
 
 @mmcv.jit(derivate=True, coderize=True)
 @custom_weighted_loss
@@ -201,11 +195,12 @@ def ordered_pts_smooth_l1_loss(pred, target):
     """
     if target.numel() == 0:
         return pred.sum() * 0
-    pred = pred.unsqueeze(1).repeat(1, target.size(1),1,1)
+    pred = pred.unsqueeze(1).repeat(1, target.size(1), 1, 1)
     assert pred.size() == target.size()
-    loss =smooth_l1_loss(pred,target, reduction='none')
+    loss = smooth_l1_loss(pred, target, reduction="none")
     # import pdb;pdb.set_trace()
     return loss
+
 
 @mmcv.jit(derivate=True, coderize=True)
 @weighted_loss
@@ -225,6 +220,7 @@ def pts_l1_loss(pred, target):
     loss = torch.abs(pred - target)
     return loss
 
+
 @mmcv.jit(derivate=True, coderize=True)
 @custom_weighted_loss
 def ordered_pts_l1_loss(pred, target):
@@ -239,15 +235,16 @@ def ordered_pts_l1_loss(pred, target):
     """
     if target.numel() == 0:
         return pred.sum() * 0
-    pred = pred.unsqueeze(1).repeat(1, target.size(1),1,1)
+    pred = pred.unsqueeze(1).repeat(1, target.size(1), 1, 1)
     assert pred.size() == target.size()
     loss = torch.abs(pred - target)
     return loss
 
+
 @mmcv.jit(derivate=True, coderize=True)
 @custom_weighted_dir_loss
 def pts_dir_cos_loss(pred, target):
-    """ Dir cosine similiarity loss
+    """Dir cosine similiarity loss
     pred (torch.Tensor): shape [num_samples, num_dir, num_coords]
     target (torch.Tensor): shape [num_samples, num_dir, num_coords]
 
@@ -256,12 +253,13 @@ def pts_dir_cos_loss(pred, target):
         return pred.sum() * 0
     # import pdb;pdb.set_trace()
     num_samples, num_dir, num_coords = pred.shape
-    loss_func = torch.nn.CosineEmbeddingLoss(reduction='none')
+    loss_func = torch.nn.CosineEmbeddingLoss(reduction="none")
     tgt_param = target.new_ones((num_samples, num_dir))
     tgt_param = tgt_param.flatten(0)
-    loss = loss_func(pred.flatten(0,1), target.flatten(0,1), tgt_param)
+    loss = loss_func(pred.flatten(0, 1), target.flatten(0, 1), tgt_param)
     loss = loss.view(num_samples, num_dir)
     return loss
+
 
 @LOSSES.register_module()
 class OrderedPtsSmoothL1Loss(nn.Module):
@@ -273,17 +271,14 @@ class OrderedPtsSmoothL1Loss(nn.Module):
         loss_weight (float, optional): The weight of loss.
     """
 
-    def __init__(self, reduction='mean', loss_weight=1.0):
+    def __init__(self, reduction="mean", loss_weight=1.0):
         super(OrderedPtsSmoothL1Loss, self).__init__()
         self.reduction = reduction
         self.loss_weight = loss_weight
 
-    def forward(self,
-                pred,
-                target,
-                weight=None,
-                avg_factor=None,
-                reduction_override=None):
+    def forward(
+        self, pred, target, weight=None, avg_factor=None, reduction_override=None
+    ):
         """Forward function.
 
         Args:
@@ -297,12 +292,12 @@ class OrderedPtsSmoothL1Loss(nn.Module):
                 override the original reduction method of the loss.
                 Defaults to None.
         """
-        assert reduction_override in (None, 'none', 'mean', 'sum')
-        reduction = (
-            reduction_override if reduction_override else self.reduction)
+        assert reduction_override in (None, "none", "mean", "sum")
+        reduction = reduction_override if reduction_override else self.reduction
         # import pdb;pdb.set_trace()
         loss_bbox = self.loss_weight * ordered_pts_smooth_l1_loss(
-            pred, target, weight, reduction=reduction, avg_factor=avg_factor)
+            pred, target, weight, reduction=reduction, avg_factor=avg_factor
+        )
         return loss_bbox
 
 
@@ -316,17 +311,14 @@ class PtsDirCosLoss(nn.Module):
         loss_weight (float, optional): The weight of loss.
     """
 
-    def __init__(self, reduction='mean', loss_weight=1.0):
+    def __init__(self, reduction="mean", loss_weight=1.0):
         super(PtsDirCosLoss, self).__init__()
         self.reduction = reduction
         self.loss_weight = loss_weight
 
-    def forward(self,
-                pred,
-                target,
-                weight=None,
-                avg_factor=None,
-                reduction_override=None):
+    def forward(
+        self, pred, target, weight=None, avg_factor=None, reduction_override=None
+    ):
         """Forward function.
 
         Args:
@@ -340,14 +332,13 @@ class PtsDirCosLoss(nn.Module):
                 override the original reduction method of the loss.
                 Defaults to None.
         """
-        assert reduction_override in (None, 'none', 'mean', 'sum')
-        reduction = (
-            reduction_override if reduction_override else self.reduction)
+        assert reduction_override in (None, "none", "mean", "sum")
+        reduction = reduction_override if reduction_override else self.reduction
         # import pdb;pdb.set_trace()
         loss_dir = self.loss_weight * pts_dir_cos_loss(
-            pred, target, weight, reduction=reduction, avg_factor=avg_factor)
+            pred, target, weight, reduction=reduction, avg_factor=avg_factor
+        )
         return loss_dir
-
 
 
 @LOSSES.register_module()
@@ -360,17 +351,14 @@ class PtsL1Loss(nn.Module):
         loss_weight (float, optional): The weight of loss.
     """
 
-    def __init__(self, reduction='mean', loss_weight=1.0):
+    def __init__(self, reduction="mean", loss_weight=1.0):
         super(PtsL1Loss, self).__init__()
         self.reduction = reduction
         self.loss_weight = loss_weight
 
-    def forward(self,
-                pred,
-                target,
-                weight=None,
-                avg_factor=None,
-                reduction_override=None):
+    def forward(
+        self, pred, target, weight=None, avg_factor=None, reduction_override=None
+    ):
         """Forward function.
 
         Args:
@@ -384,13 +372,14 @@ class PtsL1Loss(nn.Module):
                 override the original reduction method of the loss.
                 Defaults to None.
         """
-        assert reduction_override in (None, 'none', 'mean', 'sum')
-        reduction = (
-            reduction_override if reduction_override else self.reduction)
+        assert reduction_override in (None, "none", "mean", "sum")
+        reduction = reduction_override if reduction_override else self.reduction
         # import pdb;pdb.set_trace()
         loss_bbox = self.loss_weight * pts_l1_loss(
-            pred, target, weight, reduction=reduction, avg_factor=avg_factor)
+            pred, target, weight, reduction=reduction, avg_factor=avg_factor
+        )
         return loss_bbox
+
 
 @LOSSES.register_module()
 class OrderedPtsL1Loss(nn.Module):
@@ -402,17 +391,14 @@ class OrderedPtsL1Loss(nn.Module):
         loss_weight (float, optional): The weight of loss.
     """
 
-    def __init__(self, reduction='mean', loss_weight=1.0):
+    def __init__(self, reduction="mean", loss_weight=1.0):
         super(OrderedPtsL1Loss, self).__init__()
         self.reduction = reduction
         self.loss_weight = loss_weight
 
-    def forward(self,
-                pred,
-                target,
-                weight=None,
-                avg_factor=None,
-                reduction_override=None):
+    def forward(
+        self, pred, target, weight=None, avg_factor=None, reduction_override=None
+    ):
         """Forward function.
 
         Args:
@@ -426,25 +412,23 @@ class OrderedPtsL1Loss(nn.Module):
                 override the original reduction method of the loss.
                 Defaults to None.
         """
-        assert reduction_override in (None, 'none', 'mean', 'sum')
-        reduction = (
-            reduction_override if reduction_override else self.reduction)
+        assert reduction_override in (None, "none", "mean", "sum")
+        reduction = reduction_override if reduction_override else self.reduction
         # import pdb;pdb.set_trace()
         loss_bbox = self.loss_weight * ordered_pts_l1_loss(
-            pred, target, weight, reduction=reduction, avg_factor=avg_factor)
+            pred, target, weight, reduction=reduction, avg_factor=avg_factor
+        )
         return loss_bbox
-
-
 
 
 @MATCH_COST.register_module()
 class OrderedPtsSmoothL1Cost(object):
     """OrderedPtsL1Cost.
-     Args:
-         weight (int | float, optional): loss_weight
+    Args:
+        weight (int | float, optional): loss_weight
     """
 
-    def __init__(self, weight=1.):
+    def __init__(self, weight=1.0):
         self.weight = weight
 
     def __call__(self, bbox_pred, gt_bboxes):
@@ -454,28 +438,38 @@ class OrderedPtsSmoothL1Cost(object):
                 (x, y), which are all in range [0, 1]. Shape
                 [num_query, num_pts, 2].
             gt_bboxes (Tensor): Ground truth boxes with normalized
-                coordinates (x,y). 
+                coordinates (x,y).
                 Shape [num_gt, num_ordered, num_pts, 2].
         Returns:
             torch.Tensor: bbox_cost value with weight
         """
         num_gts, num_orders, num_pts, num_coords = gt_bboxes.shape
         # import pdb;pdb.set_trace()
-        bbox_pred = bbox_pred.view(bbox_pred.size(0),-1).unsqueeze(1).repeat(1,num_gts*num_orders,1)
-        gt_bboxes = gt_bboxes.flatten(2).view(num_gts*num_orders,-1).unsqueeze(0).repeat(bbox_pred.size(0),1,1)
+        bbox_pred = (
+            bbox_pred.view(bbox_pred.size(0), -1)
+            .unsqueeze(1)
+            .repeat(1, num_gts * num_orders, 1)
+        )
+        gt_bboxes = (
+            gt_bboxes.flatten(2)
+            .view(num_gts * num_orders, -1)
+            .unsqueeze(0)
+            .repeat(bbox_pred.size(0), 1, 1)
+        )
         # import pdb;pdb.set_trace()
-        bbox_cost = smooth_l1_loss(bbox_pred, gt_bboxes, reduction='none').sum(-1)
+        bbox_cost = smooth_l1_loss(bbox_pred, gt_bboxes, reduction="none").sum(-1)
         # bbox_cost = torch.cdist(bbox_pred, gt_bboxes, p=1)
         return bbox_cost * self.weight
+
 
 @MATCH_COST.register_module()
 class PtsL1Cost(object):
     """OrderedPtsL1Cost.
-     Args:
-         weight (int | float, optional): loss_weight
+    Args:
+        weight (int | float, optional): loss_weight
     """
 
-    def __init__(self, weight=1.):
+    def __init__(self, weight=1.0):
         self.weight = weight
 
     def __call__(self, bbox_pred, gt_bboxes):
@@ -485,26 +479,27 @@ class PtsL1Cost(object):
                 (x, y), which are all in range [0, 1]. Shape
                 [num_query, num_pts, 2].
             gt_bboxes (Tensor): Ground truth boxes with normalized
-                coordinates (x,y). 
+                coordinates (x,y).
                 Shape [num_gt, num_ordered, num_pts, 2].
         Returns:
             torch.Tensor: bbox_cost value with weight
         """
         num_gts, num_pts, num_coords = gt_bboxes.shape
         # import pdb;pdb.set_trace()
-        bbox_pred = bbox_pred.view(bbox_pred.size(0),-1)
-        gt_bboxes = gt_bboxes.view(num_gts,-1)
+        bbox_pred = bbox_pred.view(bbox_pred.size(0), -1)
+        gt_bboxes = gt_bboxes.view(num_gts, -1)
         bbox_cost = torch.cdist(bbox_pred, gt_bboxes, p=1)
         return bbox_cost * self.weight
+
 
 @MATCH_COST.register_module()
 class OrderedPtsL1Cost(object):
     """OrderedPtsL1Cost.
-     Args:
-         weight (int | float, optional): loss_weight
+    Args:
+        weight (int | float, optional): loss_weight
     """
 
-    def __init__(self, weight=1.):
+    def __init__(self, weight=1.0):
         self.weight = weight
 
     def __call__(self, bbox_pred, gt_bboxes):
@@ -514,27 +509,34 @@ class OrderedPtsL1Cost(object):
                 (x, y), which are all in range [0, 1]. Shape
                 [num_query, num_pts, 2].
             gt_bboxes (Tensor): Ground truth boxes with normalized
-                coordinates (x,y). 
+                coordinates (x,y).
                 Shape [num_gt, num_ordered, num_pts, 2].
         Returns:
             torch.Tensor: bbox_cost value with weight
         """
         num_gts, num_orders, num_pts, num_coords = gt_bboxes.shape
         # import pdb;pdb.set_trace()
-        bbox_pred = bbox_pred.view(bbox_pred.size(0),-1)
-        gt_bboxes = gt_bboxes.flatten(2).view(num_gts*num_orders,-1)
+        bbox_pred = bbox_pred.view(bbox_pred.size(0), -1)
+        gt_bboxes = gt_bboxes.flatten(2).view(num_gts * num_orders, -1)
         bbox_cost = torch.cdist(bbox_pred, gt_bboxes, p=1)
         return bbox_cost * self.weight
 
+
 @MATCH_COST.register_module()
 class MyChamferDistanceCost:
-    def __init__(self, loss_src_weight=1., loss_dst_weight=1.):
+    def __init__(self, loss_src_weight=1.0, loss_dst_weight=1.0):
         # assert mode in ['smooth_l1', 'l1', 'l2']
         # self.mode = mode
         self.loss_src_weight = loss_src_weight
         self.loss_dst_weight = loss_dst_weight
 
-    def __call__(self, src, dst,src_weight=1.0,dst_weight=1.0,):
+    def __call__(
+        self,
+        src,
+        dst,
+        src_weight=1.0,
+        dst_weight=1.0,
+    ):
         """
         pred_pts (Tensor): normed coordinate(x,y), shape (num_q, num_pts_M, 2)
         gt_pts (Tensor): normed coordinate(x,y), shape (num_gt, num_pts_N, 2)
@@ -549,8 +551,8 @@ class MyChamferDistanceCost:
         # else:
         #     raise NotImplementedError
         # import pdb;pdb.set_trace()
-        src_expand = src.unsqueeze(1).repeat(1,dst.shape[0],1,1)
-        dst_expand = dst.unsqueeze(0).repeat(src.shape[0],1,1,1)
+        src_expand = src.unsqueeze(1).repeat(1, dst.shape[0], 1, 1)
+        dst_expand = dst.unsqueeze(0).repeat(src.shape[0], 1, 1, 1)
         # src_expand = src.unsqueeze(2).unsqueeze(1).repeat(1,dst.shape[0], 1, dst.shape[1], 1)
         # dst_expand = dst.unsqueeze(1).unsqueeze(0).repeat(src.shape[0],1, src.shape[1], 1, 1)
         distance = torch.cdist(src_expand, dst_expand)
@@ -558,17 +560,20 @@ class MyChamferDistanceCost:
         dst2src_distance = torch.min(distance, dim=2)[0]  # (num_q, num_gt, num_pts_M)
         loss_src = (src2dst_distance * src_weight).mean(-1)
         loss_dst = (dst2src_distance * dst_weight).mean(-1)
-        loss = loss_src*self.loss_src_weight + loss_dst * self.loss_dst_weight
+        loss = loss_src * self.loss_src_weight + loss_dst * self.loss_dst_weight
         return loss
 
+
 @mmcv.jit(derivate=True, coderize=True)
-def chamfer_distance(src,
-                     dst,
-                     src_weight=1.0,
-                     dst_weight=1.0,
-                    #  criterion_mode='l1',
-                     reduction='mean',
-                     avg_factor=None):
+def chamfer_distance(
+    src,
+    dst,
+    src_weight=1.0,
+    dst_weight=1.0,
+    #  criterion_mode='l1',
+    reduction="mean",
+    avg_factor=None,
+):
     """Calculate Chamfer Distance of two sets.
 
     Args:
@@ -612,14 +617,14 @@ def chamfer_distance(src,
     src2dst_distance, indices1 = torch.min(distance, dim=2)  # (B,N)
     dst2src_distance, indices2 = torch.min(distance, dim=1)  # (B,M)
     # import pdb;pdb.set_trace()
-    #TODO this may be wrong for misaligned src_weight, now[N,fixed_num]
+    # TODO this may be wrong for misaligned src_weight, now[N,fixed_num]
     # should be [N], then view
-    loss_src = (src2dst_distance * src_weight)
-    loss_dst = (dst2src_distance * dst_weight)
+    loss_src = src2dst_distance * src_weight
+    loss_dst = dst2src_distance * dst_weight
     if avg_factor is None:
         reduction_enum = F._Reduction.get_enum(reduction)
         if reduction_enum == 0:
-            raise ValueError('MyCDLoss can not be used with reduction=`none`')
+            raise ValueError("MyCDLoss can not be used with reduction=`none`")
         elif reduction_enum == 1:
             loss_src = loss_src.mean(-1).mean()
             loss_dst = loss_dst.mean(-1).mean()
@@ -629,11 +634,11 @@ def chamfer_distance(src,
         else:
             raise NotImplementedError
     else:
-        if reduction == 'mean':
+        if reduction == "mean":
             eps = torch.finfo(torch.float32).eps
             loss_src = loss_src.mean(-1).sum() / (avg_factor + eps)
             loss_dst = loss_dst.mean(-1).sum() / (avg_factor + eps)
-        elif reduction != 'none':
+        elif reduction != "none":
             raise ValueError('avg_factor can not be used with reduction="sum"')
 
     return loss_src, loss_dst, indices1, indices2
@@ -652,29 +657,33 @@ class MyChamferDistance(nn.Module):
         loss_dst_weight (float): Weight of loss_target.
     """
 
-    def __init__(self,
-                #  mode='l1',
-                 reduction='mean',
-                 loss_src_weight=1.0,
-                 loss_dst_weight=1.0):
+    def __init__(
+        self,
+        #  mode='l1',
+        reduction="mean",
+        loss_src_weight=1.0,
+        loss_dst_weight=1.0,
+    ):
         super(MyChamferDistance, self).__init__()
 
         # assert mode in ['smooth_l1', 'l1', 'l2']
-        assert reduction in ['none', 'sum', 'mean']
+        assert reduction in ["none", "sum", "mean"]
         # self.mode = mode
         self.reduction = reduction
         self.loss_src_weight = loss_src_weight
         self.loss_dst_weight = loss_dst_weight
 
-    def forward(self,
-                source,
-                target,
-                src_weight=1.0,
-                dst_weight=1.0,
-                avg_factor=None,
-                reduction_override=None,
-                return_indices=False,
-                **kwargs):
+    def forward(
+        self,
+        source,
+        target,
+        src_weight=1.0,
+        dst_weight=1.0,
+        avg_factor=None,
+        reduction_override=None,
+        return_indices=False,
+        **kwargs
+    ):
         """Forward function of loss calculation.
 
         Args:
@@ -699,13 +708,12 @@ class MyChamferDistance(nn.Module):
                 If ``return_indices=False``, return \
                 ``(loss_source, loss_target)``.
         """
-        assert reduction_override in (None, 'none', 'mean', 'sum')
-        reduction = (
-            reduction_override if reduction_override else self.reduction)
+        assert reduction_override in (None, "none", "mean", "sum")
+        reduction = reduction_override if reduction_override else self.reduction
 
         loss_source, loss_target, indices1, indices2 = chamfer_distance(
-            source, target, src_weight, dst_weight, reduction,
-            avg_factor=avg_factor)
+            source, target, src_weight, dst_weight, reduction, avg_factor=avg_factor
+        )
 
         loss_source *= self.loss_src_weight
         loss_target *= self.loss_dst_weight

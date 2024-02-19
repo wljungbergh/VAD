@@ -2,10 +2,7 @@
 
 """This module evaluates the forecasted trajectories against the ground truth."""
 
-import math
-from typing import Dict, List, Optional
 
-import numpy as np
 import torch
 
 LOW_PROB_THRESHOLD_FOR_METRICS = 0.05
@@ -32,9 +29,9 @@ def get_ade(forecasted_trajectory: torch.Tensor, gt_trajectory: torch.Tensor) ->
     )
     return ade
 
+
 def get_best_preds(
-    forecasted_trajectory: torch.Tensor,
-    gt_trajectory: torch.Tensor
+    forecasted_trajectory: torch.Tensor, gt_trajectory: torch.Tensor
 ) -> float:
     """Compute min Average Displacement Error.
     Args:
@@ -52,6 +49,7 @@ def get_best_preds(
     min_mode_idx = torch.argmin(dist, dim=-1)
 
     return forecasted_trajectory[min_mode_idx]
+
 
 def get_fde(forecasted_trajectory: torch.Tensor, gt_trajectory: torch.Tensor) -> float:
     """Compute Final Displacement Error.

@@ -3,7 +3,6 @@ import torch
 from mmdet.core.bbox import BaseBBoxCoder
 from mmdet.core.bbox.builder import BBOX_CODERS
 from projects.mmdet3d_plugin.core.bbox.util import denormalize_bbox
-import numpy as np
 
 
 @BBOX_CODERS.register_module()
@@ -19,13 +18,15 @@ class CustomNMSFreeCoder(BaseBBoxCoder):
         code_size (int): Code size of bboxes. Default: 9
     """
 
-    def __init__(self,
-                 pc_range,
-                 voxel_size=None,
-                 post_center_range=None,
-                 max_num=100,
-                 score_threshold=None,
-                 num_classes=10):
+    def __init__(
+        self,
+        pc_range,
+        voxel_size=None,
+        post_center_range=None,
+        max_num=100,
+        score_threshold=None,
+        num_classes=10,
+    ):
         self.pc_range = pc_range
         self.voxel_size = voxel_size
         self.post_center_range = post_center_range
@@ -34,7 +35,6 @@ class CustomNMSFreeCoder(BaseBBoxCoder):
         self.num_classes = num_classes
 
     def encode(self):
-
         pass
 
     def decode_single(self, cls_scores, bbox_preds, traj_preds):
@@ -57,9 +57,9 @@ class CustomNMSFreeCoder(BaseBBoxCoder):
         bbox_index = indexs // self.num_classes
         bbox_preds = bbox_preds[bbox_index]
         traj_preds = traj_preds[bbox_index]
-       
-        final_box_preds = denormalize_bbox(bbox_preds, self.pc_range)   
-        final_scores = scores 
+
+        final_box_preds = denormalize_bbox(bbox_preds, self.pc_range)
+        final_scores = scores
         final_preds = labels
         final_traj_preds = traj_preds
 
@@ -76,11 +76,10 @@ class CustomNMSFreeCoder(BaseBBoxCoder):
 
         if self.post_center_range is not None:
             self.post_center_range = torch.tensor(
-                self.post_center_range, device=scores.device)
-            mask = (final_box_preds[..., :3] >=
-                    self.post_center_range[:3]).all(1)
-            mask &= (final_box_preds[..., :3] <=
-                     self.post_center_range[3:]).all(1)
+                self.post_center_range, device=scores.device
+            )
+            mask = (final_box_preds[..., :3] >= self.post_center_range[:3]).all(1)
+            mask &= (final_box_preds[..., :3] <= self.post_center_range[3:]).all(1)
 
             if self.score_threshold:
                 mask &= thresh_mask
@@ -91,16 +90,17 @@ class CustomNMSFreeCoder(BaseBBoxCoder):
             trajs = final_traj_preds[mask]
 
             predictions_dict = {
-                'bboxes': boxes3d,
-                'scores': scores,
-                'labels': labels,
-                'trajs': trajs
+                "bboxes": boxes3d,
+                "scores": scores,
+                "labels": labels,
+                "trajs": trajs,
             }
 
         else:
             raise NotImplementedError(
-                'Need to reorganize output as a batch, only '
-                'support post_center_range is not None for now!')
+                "Need to reorganize output as a batch, only "
+                "support post_center_range is not None for now!"
+            )
         return predictions_dict
 
     def decode(self, preds_dicts):
@@ -115,13 +115,16 @@ class CustomNMSFreeCoder(BaseBBoxCoder):
         Returns:
             list[dict]: Decoded boxes.
         """
-        all_cls_scores = preds_dicts['all_cls_scores'][-1]
-        all_bbox_preds = preds_dicts['all_bbox_preds'][-1]
-        all_traj_preds = preds_dicts['all_traj_preds'][-1]
-        
+        all_cls_scores = preds_dicts["all_cls_scores"][-1]
+        all_bbox_preds = preds_dicts["all_bbox_preds"][-1]
+        all_traj_preds = preds_dicts["all_traj_preds"][-1]
+
         batch_size = all_cls_scores.size()[0]
         predictions_list = []
         for i in range(batch_size):
-            predictions_list.append(self.decode_single(all_cls_scores[i], all_bbox_preds[i], all_traj_preds[i]))
+            predictions_list.append(
+                self.decode_single(
+                    all_cls_scores[i], all_bbox_preds[i], all_traj_preds[i]
+                )
+            )
         return predictions_list
-

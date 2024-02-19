@@ -1,17 +1,13 @@
 import os
-from typing import Any, Dict, Tuple
 
 import mmcv
 import torch
 import numpy as np
-from nuscenes.map_expansion.map_api import NuScenesMap
-from nuscenes.map_expansion.map_api import locations as LOCATIONS
-from PIL import Image
 
 
 from mmdet3d.core.points import BasePoints, get_points_type
 from mmdet.datasets.builder import PIPELINES
-from mmdet.datasets.pipelines import LoadAnnotations
+
 
 def load_augmented_point_cloud(path, virtual=False, reduce_beams=32):
     # NOTE: following Tianwei's implementation, it is hard coded for nuScenes
@@ -69,7 +65,7 @@ def reduce_LiDAR_beams(pts, reduce_beams_to=32):
     sine_theta = pts[:, 2] / radius
     # [-pi/2, pi/2]
     theta = torch.asin(sine_theta)
-    phi = torch.atan2(pts[:, 1], pts[:, 0])
+    torch.atan2(pts[:, 1], pts[:, 0])
 
     top_ang = 0.1862
     down_ang = -0.5353
@@ -111,6 +107,7 @@ def reduce_LiDAR_beams(pts, reduce_beams_to=32):
     points = pts[mask]
     # print(points.size())
     return points.numpy()
+
 
 @PIPELINES.register_module()
 class CustomLoadPointsFromMultiSweeps:
@@ -265,7 +262,6 @@ class CustomLoadPointsFromMultiSweeps:
     def __repr__(self):
         """str: Return a string that describes the module."""
         return f"{self.__class__.__name__}(sweeps_num={self.sweeps_num})"
-
 
 
 @PIPELINES.register_module()
