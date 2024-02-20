@@ -7,8 +7,6 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 ENV NVIDIA_DRIVER_CAPABILITIES ${NVIDIA_DRIVER_CAPABILITIES},compute,display
 
-SHELL [ "/bin/bash", "--login", "-c" ]
-
 # To fix GPG key error when running apt-get update
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
@@ -48,7 +46,7 @@ RUN pip install mmsegmentation==0.14.1
 # Install mmdetection3d
 RUN git clone --branch v0.17.1 --single-branch https://github.com/open-mmlab/mmdetection3d.git
 WORKDIR /mmdetection3d
-RUN pip install scipy==1.7.3 scikit-image==0.20.0
+RUN pip install scipy==1.7.3 scikit-image==0.19.3
 RUN pip install --no-cache-dir -v -e .
 
 # Copy to python dist-package foldder
