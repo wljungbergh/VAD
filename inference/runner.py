@@ -18,6 +18,15 @@ from nuscenes.eval.common.utils import (
     quaternion_yaw,
 )
 
+NUSCENES_CAM_ORDER = [
+    "CAM_FRONT",
+    "CAM_FRONT_RIGHT",
+    "CAM_FRONT_LEFT",
+    "CAM_BACK",
+    "CAM_BACK_LEFT",
+    "CAM_BACK_RIGHT",
+]
+
 
 @dataclass
 class VADInferenceInput:
