@@ -208,7 +208,7 @@ class VADRunner:
         return VADInferenceOutput(
             trajectory=trajectory,
             aux_outputs=VADAuxOutputs(
-                objects_in_bev=bbox_results[0]["boxes_3d"].bevtolist(),
+                objects_in_bev=bbox_results[0]["boxes_3d"].bev.tolist(),
                 object_scores=bbox_results[0]["scores_3d"].tolist(),
                 object_classes=[self.classes[i] for i in bbox_results[0]["labels_3d"]],
                 segmentation=None,  # bev_h, bev_w
