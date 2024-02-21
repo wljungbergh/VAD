@@ -71,13 +71,13 @@ async def alive() -> bool:
 
 @app.post("/infer")
 async def infer(data: InferenceInputs) -> InferenceOutputs:
-    uniad_input = _build_vad_input(data)
-    uniad_output = uniad_runner.forward_inference(uniad_input)
+    vad_input = _build_vad_input(data)
+    vad_output = vad_runner.forward_inference(vad_input)
     return InferenceOutputs(
-        trajectory=uniad_output.trajectory.tolist(),
+        trajectory=vad_output.trajectory.tolist(),
         aux_outputs=(
-            InferenceAuxOutputs(**uniad_output.aux_outputs.to_json())
-            if uniad_output.aux_outputs is not None
+            InferenceAuxOutputs(**vad_output.aux_outputs.to_json())
+            if vad_output.aux_outputs is not None
             else None
         ),
     )
@@ -85,7 +85,7 @@ async def infer(data: InferenceInputs) -> InferenceOutputs:
 
 @app.post("/reset")
 async def reset_runner() -> bool:
-    uniad_runner.reset()
+    vad_runner.reset()
     return True
 
 
@@ -132,6 +132,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     device = torch.device(args.device)
 
-    uniad_runner = VADRunner(args.config_path, args.checkpoint_path, device)
+    vad_runner = VADRunner(args.config_path, args.checkpoint_path, device)
 
     uvicorn.run(app, host=args.host, port=args.port)
