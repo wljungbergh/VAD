@@ -53,6 +53,7 @@ class VADAuxOutputs:
     seg_grid_centers: Optional[
         List[List[List[float]]]
     ] = None  # bev_h (200), bev_w (200), 2 (x & y)
+    future_trajs: Optional[List[List[List[List[float]]]]] = None  # (N, 6, 6, 2)
 
     def to_json(self) -> dict:
         return dict(
@@ -61,6 +62,7 @@ class VADAuxOutputs:
             object_scores=self.object_scores,
             segmentation=self.segmentation,
             seg_grid_centers=self.seg_grid_centers,
+            future_trajs=self.future_trajs,
         )
 
 
@@ -203,7 +205,12 @@ class VADRunner:
             bbox_results.append(bbox_result)
 
         # note that they work with deltas
-        trajectory = bbox_result["ego_fut_preds"][input.command].cumsum(dim=-2).numpy()
+        trajectory = (
+            bbox_results[0]["ego_fut_preds"][input.command].cumsum(dim=-2).numpy()
+        )
+        future_trajs = (
+            bbox_results[0]["trajs_3d"].reshape(-1, 6, 6, 2).cumsum(dim=-2)
+        )  # + bboxes.bev[:, :2].unsqueeze(1).unsqueeze(1)
 
         return VADInferenceOutput(
             trajectory=trajectory,
@@ -213,6 +220,7 @@ class VADRunner:
                 object_classes=[self.classes[i] for i in bbox_results[0]["labels_3d"]],
                 segmentation=None,  # bev_h, bev_w
                 seg_grid_centers=None,  # bev_h, bev_w, 2 [x, y]
+                future_trajs=future_trajs.tolist(),  # N x 6 modes x 6 future_timesteps x 2 (x, y)
             ),
         )
 
