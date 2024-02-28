@@ -170,6 +170,7 @@ class VADRunner:
 
         self.prev_frame_info["prev_pos"] = tmp_pos
         self.prev_frame_info["prev_angle"] = tmp_angle
+        self.prev_frame_info["scene_token"] = self.scene_token
 
         img_feats = self.model.extract_feat(img=imgs, img_metas=img_metas)
         outs = self.model.pts_bbox_head(
