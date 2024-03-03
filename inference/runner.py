@@ -118,6 +118,7 @@ class VADRunner:
             input.can_bus_signals, patch_angle / 180 * np.pi
         )
         input.can_bus_signals = np.append(input.can_bus_signals, patch_angle)
+        input.can_bus_signals[3:7] = -rotation
 
     def preproc(self, input: VADInferenceInput):
         """Preprocess the input data."""
