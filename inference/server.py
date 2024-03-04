@@ -130,7 +130,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--port", type=int, default=9000)
-    parser.add_argument("--use-col-opt", action="store_true")
+    parser.add_argument("--enable_col_opt", action="store_true")
     args = parser.parse_args()
     device = torch.device(args.device)
 
