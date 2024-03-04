@@ -135,7 +135,7 @@ if __name__ == "__main__":
     device = torch.device(args.device)
 
     vad_runner = VADRunner(
-        args.config_path, args.checkpoint_path, device, use_col_opt=args.use_col_opt
+        args.config_path, args.checkpoint_path, device, use_col_opt=args.enable_col_opt
     )
 
     uvicorn.run(app, host=args.host, port=args.port)
