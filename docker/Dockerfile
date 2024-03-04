@@ -57,3 +57,5 @@ RUN ln /usr/bin/python3 /usr/bin/python
 
 RUN pip install uvicorn fastapi
 
+# uniad's collision optimization needs this
+RUN pip install casadi==3.5.5

@@ -1,22 +1,26 @@
 import copy
+import uuid
 from dataclasses import dataclass
 from typing import List, Optional
-import uuid
+
+import cv2
+import numpy as np
+import torch
+from mmcv import Config
+from mmcv.runner import load_checkpoint
+from mmdet3d.core import bbox3d2result
+from mmdet3d.core.bbox import LiDARInstance3DBoxes
 from mmdet3d.datasets.pipelines import Compose
 from mmdet3d.models import build_model
-from mmdet3d.core import bbox3d2result
-
-from mmdet3d.core.bbox import LiDARInstance3DBoxes
-from mmcv.runner import load_checkpoint
-from mmcv import Config
-import numpy as np
-from pyquaternion import Quaternion
-import torch
-
-from projects.mmdet3d_plugin.VAD.VAD import VAD
 from nuscenes.eval.common.utils import (
     quaternion_yaw,
 )
+from pyquaternion import Quaternion
+
+from projects.mmdet3d_plugin.VAD.modules.collision_optimization import (
+    CollisionNonlinearOptimizer,
+)
+from projects.mmdet3d_plugin.VAD.VAD import VAD
 
 NUSCENES_CAM_ORDER = [
     "CAM_FRONT",
@@ -25,6 +29,16 @@ NUSCENES_CAM_ORDER = [
     "CAM_BACK",
     "CAM_BACK_LEFT",
     "CAM_BACK_RIGHT",
+]
+
+COLLISION_CLASSES_TO_CHECK = [
+    "car",
+    "bus",
+    "construction_vehicle",
+    "bicycle",
+    "motorcycle",
+    "truck",
+    "trailer",
 ]
 
 
@@ -75,7 +89,13 @@ class VADInferenceOutput:
 
 
 class VADRunner:
-    def __init__(self, config_path: str, checkpoint_path: str, device: torch.device):
+    def __init__(
+        self,
+        config_path: str,
+        checkpoint_path: str,
+        device: torch.device,
+        use_col_optim: bool = False,
+    ):
         config = Config.fromfile(config_path)
         self.config = config
 
@@ -95,6 +115,18 @@ class VADRunner:
         self.model = self.model.to(device)
         self.device = device
         self.preproc_pipeline = Compose(config.inference_pipeline)
+        self.use_col_optim = use_col_optim
+        self.planning_steps = 6
+        self.future_modes = 6
+        self.score_treshold = 0.3
+        self.occ_filter_range = 5.0  # default parameters taken from UniAD
+        self.sigma = 1.0  # default parameters taken from UniAD
+        self.alpha_collision = 5.0  # default parameters taken from UniAD
+        self._bev_h = self.config.bev_h_
+        self._bev_w = self.config.bev_w_
+        self._bev_range = (-51.2, 51.2)
+        self._bev_resolution = 51.2 * 2 / self._bev_h
+
         self.reset()
 
     def reset(self):
@@ -119,6 +151,132 @@ class VADRunner:
         )
         input.can_bus_signals = np.append(input.can_bus_signals, patch_angle)
         input.can_bus_signals[3:7] = -rotation
+
+    def _occ_mask_from_objects(
+        self,
+        objects: LiDARInstance3DBoxes,
+        future_trajs: torch.Tensor,
+    ) -> torch.Tensor:
+        occ_mask = np.zeros(
+            (1, self.planning_steps, 1, self._bev_h, self._bev_w), dtype=np.int32
+        )
+
+        if len(objects.tensor) == 0:
+            return torch.from_numpy(occ_mask)
+        # add the current position of the objects to the future trajectory n x 6 x 7 x 2
+        future_coords = torch.cat(
+            [torch.zeros(size=(future_trajs.shape[0], 6, 1, 2)), future_trajs], dim=-2
+        )
+        # compute the yaw angle of the objects (n x 6 x 6)
+        coord_diff = torch.diff(future_coords, dim=-2)
+        yaw = torch.atan2(coord_diff[..., 1], coord_diff[..., 0])
+        widths = objects.tensor[:, 3].unsqueeze(-1).unsqueeze(-1)
+        lengths = objects.tensor[:, 4].unsqueeze(-1).unsqueeze(-1)
+        # compute the corners of the objects
+        corners = torch.stack(
+            [
+                torch.stack(
+                    [
+                        torch.cos(yaw) * lengths / 2 + torch.sin(yaw) * widths / 2,
+                        torch.sin(yaw) * lengths / 2 - torch.cos(yaw) * widths / 2,
+                    ],
+                    dim=-1,
+                ),
+                torch.stack(
+                    [
+                        torch.cos(yaw) * lengths / 2 - torch.sin(yaw) * widths / 2,
+                        torch.sin(yaw) * lengths / 2 + torch.cos(yaw) * widths / 2,
+                    ],
+                    dim=-1,
+                ),
+                torch.stack(
+                    [
+                        -torch.cos(yaw) * lengths / 2 - torch.sin(yaw) * widths / 2,
+                        -torch.sin(yaw) * lengths / 2 + torch.cos(yaw) * widths / 2,
+                    ],
+                    dim=-1,
+                ),
+                torch.stack(
+                    [
+                        -torch.cos(yaw) * lengths / 2 + torch.sin(yaw) * widths / 2,
+                        -torch.sin(yaw) * lengths / 2 - torch.cos(yaw) * widths / 2,
+                    ],
+                    dim=-1,
+                ),
+            ],
+            dim=-2,
+        )
+        # add the object position to the corners
+        corners += (
+            objects.bev[:, :2].unsqueeze(1).unsqueeze(1) + future_trajs
+        ).unsqueeze(-2)
+        # compute the mask
+        corners -= self._bev_range[0] + self._bev_resolution / 2
+        corners = torch.round(corners / self._bev_resolution).long().cpu().numpy()
+
+        for i_obj in range(len(corners)):
+            for i_mode in range(self.future_modes):
+                for i_future in range(self.planning_steps):
+                    cv2.fillPoly(
+                        occ_mask[0, i_future, 0],
+                        [corners[i_obj, i_mode, i_future]],
+                        1,
+                    )
+
+        return torch.from_numpy(occ_mask)
+
+    def _collision_optimization(
+        self, sdc_traj_all: torch.Tensor, occ_mask: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Optimize SDC trajectory with occupancy instance mask.
+        Code adapted from UniAD: https://github.com/OpenDriveLab/UniAD
+
+        Args:
+            sdc_traj_all (torch.Tensor): SDC trajectory tensor. shape: 1 x future_ts x 2
+            occ_mask (torch.Tensor): Occupancy flow instance mask. shape: 1 x futre_ts x 1 x bev_h x bev_w
+        Returns:
+            torch.Tensor: Optimized SDC trajectory tensor. shape: 1 x future_ts x 2
+        """
+        pos_xy_t = []
+        valid_occupancy_num = 0
+
+        if occ_mask.shape[2] == 1:
+            occ_mask = occ_mask.squeeze(2)
+        occ_horizon = occ_mask.shape[1]
+        assert occ_horizon == 5
+
+        for t in range(self.planning_steps):
+            cur_t = min(t + 1, occ_horizon - 1)
+            pos_xy = torch.nonzero(occ_mask[0][cur_t], as_tuple=False)
+            pos_xy = pos_xy[:, [1, 0]]
+            pos_xy[:, 0] = (pos_xy[:, 0] - self._bev_h // 2) * 0.5 + 0.25
+            pos_xy[:, 1] = (pos_xy[:, 1] - self._bev_w // 2) * 0.5 + 0.25
+
+            # filter the occupancy in range
+            keep_index = (
+                torch.sum(
+                    (sdc_traj_all[0, t, :2][None, :] - pos_xy[:, :2]) ** 2, axis=-1
+                )
+                < self.occ_filter_range**2
+            )
+            pos_xy_t.append(pos_xy[keep_index].cpu().detach().numpy())
+            valid_occupancy_num += torch.sum(keep_index > 0)
+        if valid_occupancy_num == 0:
+            return sdc_traj_all
+
+        col_optimizer = CollisionNonlinearOptimizer(
+            self.planning_steps, 0.5, self.sigma, self.alpha_collision, pos_xy_t
+        )
+        col_optimizer.set_reference_trajectory(sdc_traj_all[0].cpu().detach().numpy())
+        sol = col_optimizer.solve()
+        sdc_traj_optim = np.stack(
+            [sol.value(col_optimizer.position_x), sol.value(col_optimizer.position_y)],
+            axis=-1,
+        )
+        return torch.tensor(
+            sdc_traj_optim[None], device=sdc_traj_all.device, dtype=sdc_traj_all.dtype
+        )
 
     def preproc(self, input: VADInferenceInput):
         """Preprocess the input data."""
@@ -213,6 +371,41 @@ class VADRunner:
         future_trajs = (
             bbox_results[0]["trajs_3d"].reshape(-1, 6, 6, 2).cumsum(dim=-2)
         )  # + bboxes.bev[:, :2].unsqueeze(1).unsqueeze(1)
+        occ_mask = None
+        seg_grid_centers = None
+        if self.use_col_optim:
+            classes = np.array([self.classes[i] for i in bbox_results[0]["labels_3d"]])
+            cls_mask = torch.from_numpy(np.isin(classes, COLLISION_CLASSES_TO_CHECK))
+            scores_mask = bbox_results[0]["scores_3d"] >= self.score_treshold
+            mask = torch.logical_and(cls_mask, scores_mask)
+            # if we dont have any objects to check for collision, we can skip the optimization
+            if mask.any():
+                occ_mask = self._occ_mask_from_objects(
+                    bbox_results[0]["boxes_3d"][mask],
+                    future_trajs[mask],
+                )
+                tmpx = torch.linspace(
+                    self._bev_range[0], self._bev_range[1], self._bev_w
+                )
+                tmpy = torch.linspace(
+                    self._bev_range[0], self._bev_range[1], self._bev_h
+                )
+                tmp_m, tmp_n = torch.meshgrid(tmpx, tmpy)  # indexing 'ij'
+                tmp_m, tmp_n = tmp_m.T, tmp_n.T  # change it to the 'xy' mode results
+                seg_grid_centers = torch.stack([tmp_m, tmp_n], dim=2).tolist()
+                # they only use the first 4 during collision optimization (soley follwing UniAD implementation)
+                occ_mask_ = occ_mask[:, :4]
+                # but they have the currnent occupancy first, however it is never used so we can just set it to 0
+                occ_mask_ = torch.cat(
+                    [torch.zeros_like(occ_mask_[:, 0]).unsqueeze(0), occ_mask_], dim=1
+                )
+                trajectory = (
+                    self._collision_optimization(
+                        torch.from_numpy(trajectory).unsqueeze(0), occ_mask_
+                    )
+                    .squeeze(0)
+                    .numpy()
+                )
 
         return VADInferenceOutput(
             trajectory=trajectory,
@@ -220,8 +413,10 @@ class VADRunner:
                 objects_in_bev=bbox_results[0]["boxes_3d"].bev.tolist(),
                 object_scores=bbox_results[0]["scores_3d"].tolist(),
                 object_classes=[self.classes[i] for i in bbox_results[0]["labels_3d"]],
-                segmentation=None,  # bev_h, bev_w
-                seg_grid_centers=None,  # bev_h, bev_w, 2 [x, y]
+                segmentation=occ_mask[0, 0, 0].tolist()
+                if occ_mask is not None
+                else None,  # bev_h, bev_w
+                seg_grid_centers=seg_grid_centers,  # bev_h, bev_w, 2 [x, y]
                 future_trajs=future_trajs.tolist(),  # N x 6 modes x 6 future_timesteps x 2 (x, y)
             ),
         )
@@ -352,10 +547,10 @@ if __name__ == "__main__":
     )
 
     # only load this for testing
-    from nuscenes.nuscenes import NuScenes
-    from nuscenes.can_bus.can_bus_api import NuScenesCanBus
-    import matplotlib.pyplot as plt
     import cv2
+    import matplotlib.pyplot as plt
+    from nuscenes.can_bus.can_bus_api import NuScenesCanBus
+    from nuscenes.nuscenes import NuScenes
 
     # load the first surround-cam in nusc mini
     nusc = NuScenes(version="v1.0-mini", dataroot="./data/nuscenes")
