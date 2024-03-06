@@ -4,7 +4,7 @@ import torch
 from inference.runner import VADInferenceInput, VADInferenceOutput, VADRunner
 
 CORRIDOR_WIDTH = 5  # meters
-CORRIDOR_LENGTH = 10  # meters
+CORRIDOR_LENGTH = 15  # meters
 CORRIDOR_START = 1  # meters
 
 
