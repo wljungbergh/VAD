@@ -4,7 +4,7 @@ import torch
 from inference.runner import VADInferenceInput, VADInferenceOutput, VADRunner
 
 CORRIDOR_WIDTH = 5  # meters
-CORRIDOR_LENGTH = 15  # meters
+CORRIDOR_LENGTH = 10  # meters
 CORRIDOR_START = 1  # meters
 
 
@@ -23,7 +23,6 @@ class BaselineVADRunner(VADRunner):
             objects_in_corridor_long,
             np.abs(objects[:, 0]) <= CORRIDOR_WIDTH / 2,
         )
-
         if not np.any(objects_in_corridor):
             cur_vel = input.can_bus_signals[13]
         else:
