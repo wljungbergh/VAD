@@ -118,7 +118,7 @@ class VADRunner:
         self.use_col_optim = use_col_optim
         self.planning_steps = 6
         self.future_modes = 6
-        self.score_treshold = 0.3
+        self.score_treshold = 0.35
         self.occ_filter_range = 5.0  # default parameters taken from UniAD
         self.sigma = 1.0  # default parameters taken from UniAD
         self.alpha_collision = 5.0  # default parameters taken from UniAD
@@ -407,12 +407,27 @@ class VADRunner:
                     .numpy()
                 )
 
+        score_mask = bbox_results[0]["scores_3d"] >= self.score_treshold
+
+        if not score_mask.any():
+            objects_in_bev = np.empty((0, 5))
+            object_scores = np.empty((0))
+            object_classes = []
+            future_trajs = np.empty((0, 6, 6, 2))
+        else:
+            objects_in_bev = bbox_results[0]["boxes_3d"].bev[score_mask].cpu().numpy()
+            object_scores = bbox_results[0]["scores_3d"][score_mask].cpu().numpy()
+            object_classes = [
+                self.classes[i] for i in bbox_results[0]["labels_3d"][score_mask]
+            ]
+            future_trajs = future_trajs[score_mask].cpu().numpy()
+
         return VADInferenceOutput(
             trajectory=trajectory,
             aux_outputs=VADAuxOutputs(
-                objects_in_bev=bbox_results[0]["boxes_3d"].bev.tolist(),
-                object_scores=bbox_results[0]["scores_3d"].tolist(),
-                object_classes=[self.classes[i] for i in bbox_results[0]["labels_3d"]],
+                objects_in_bev=objects_in_bev.tolist(),
+                object_scores=object_scores.tolist(),
+                object_classes=object_classes,
                 segmentation=occ_mask[0, 0, 0].tolist()
                 if occ_mask is not None
                 else None,  # bev_h, bev_w
