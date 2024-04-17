@@ -13,7 +13,6 @@ from inference.runner import (
     VADInferenceInput,
     VADRunner,
 )
-from inference.baseline import BaselineVADRunner
 
 app = FastAPI()
 
@@ -131,12 +130,10 @@ if __name__ == "__main__":
     parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--port", type=int, default=9000)
     parser.add_argument("--enable_col_optim", action="store_true")
-    parser.add_argument("--run_baseline", action="store_true")
 
     args = parser.parse_args()
     device = torch.device(args.device)
-    runner_cls = BaselineVADRunner if args.run_baseline else VADRunner
-    vad_runner = runner_cls(
+    vad_runner = VADRunner(
         args.config_path,
         args.checkpoint_path,
         device,
