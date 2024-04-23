@@ -60,23 +60,31 @@ class VADInferenceInput:
 
 @dataclass
 class VADAuxOutputs:
-    objects_in_bev: Optional[List[List[float]]] = None  # N x [x, y, width, height, yaw]
-    object_classes: Optional[List[str]] = None  # (N, )
-    object_scores: Optional[List[float]] = None  # (N, )
-    segmentation: Optional[List[List[float]]] = None
-    seg_grid_centers: Optional[
-        List[List[List[float]]]
-    ] = None  # bev_h (200), bev_w (200), 2 (x & y)
-    future_trajs: Optional[List[List[List[List[float]]]]] = None  # (N, 6, 6, 2)
+    objects_in_bev: np.ndarray  # N x [x, y, width, height, yaw]
+    object_classes: List[str]  # (N, 1)
+    object_scores: np.ndarray  # (N, 1)
+    object_ids: np.ndarray  # (N, ) This will be filled with -1 as VAD does not have IDs
+    future_trajs: np.ndarray  # (N, 6, 6, 2)
 
     def to_json(self) -> dict:
+        n_objects = len(self.objects_in_bev)
+
         return dict(
-            objects_in_bev=self.objects_in_bev,
-            object_classes=self.object_classes,
-            object_scores=self.object_scores,
-            segmentation=self.segmentation,
-            seg_grid_centers=self.seg_grid_centers,
-            future_trajs=self.future_trajs,
+            objects_in_bev=self.objects_in_bev if n_objects > 0 else None,
+            object_classes=self.object_classes if n_objects > 0 else None,
+            object_scores=self.object_scores if n_objects > 0 else None,
+            object_ids=self.object_ids if n_objects > 0 else None,
+            future_trajs=self.future_trajs if n_objects > 0 else None,
+        )
+
+    @classmethod
+    def empty(cls) -> "VADAuxOutputs":
+        return cls(
+            objects_in_bev=np.empty(0, 5),
+            object_classes=[],
+            object_scores=np.empty(0, 1),
+            object_ids=np.empty(0, 1),
+            future_trajs=np.empty(0, 6, 6, 2),
         )
 
 
@@ -84,7 +92,7 @@ class VADAuxOutputs:
 class VADInferenceOutput:
     trajectory: np.ndarray
     """shape: (n-future (6), 2) | predicted trajectory in the ego-frame @ 2Hz"""
-    aux_outputs: Optional[VADAuxOutputs] = None
+    aux_outputs: VADAuxOutputs
     """aux outputs such as objects, tracks, segmentation and motion forecast"""
 
 
@@ -111,10 +119,10 @@ class VADRunner:
         else:
             raise ValueError("checkpoint_path is None")
 
-        # do more stuff here maybe?
         self.model = self.model.to(device)
         self.device = device
         self.preproc_pipeline = Compose(config.inference_pipeline)
+        # collision optimization
         self.use_col_optim = use_col_optim
         self.planning_steps = 6
         self.future_modes = 6
@@ -150,6 +158,8 @@ class VADRunner:
             input.can_bus_signals, patch_angle / 180 * np.pi
         )
         input.can_bus_signals = np.append(input.can_bus_signals, patch_angle)
+        # note that this is faulty as it only assigns the first of the four values. However
+        # this is how they do it in their implementation so we follow that
         input.can_bus_signals[3:7] = -rotation
 
     def _occ_mask_from_objects(
@@ -372,7 +382,6 @@ class VADRunner:
             bbox_results[0]["trajs_3d"].reshape(-1, 6, 6, 2).cumsum(dim=-2)
         )  # + bboxes.bev[:, :2].unsqueeze(1).unsqueeze(1)
         occ_mask = None
-        seg_grid_centers = None
         if self.use_col_optim:
             classes = np.array([self.classes[i] for i in bbox_results[0]["labels_3d"]])
             cls_mask = torch.from_numpy(np.isin(classes, COLLISION_CLASSES_TO_CHECK))
@@ -384,15 +393,6 @@ class VADRunner:
                     bbox_results[0]["boxes_3d"][mask],
                     future_trajs[mask],
                 )
-                tmpx = torch.linspace(
-                    self._bev_range[0], self._bev_range[1], self._bev_w
-                )
-                tmpy = torch.linspace(
-                    self._bev_range[0], self._bev_range[1], self._bev_h
-                )
-                tmp_m, tmp_n = torch.meshgrid(tmpx, tmpy)  # indexing 'ij'
-                tmp_m, tmp_n = tmp_m.T, tmp_n.T  # change it to the 'xy' mode results
-                seg_grid_centers = torch.stack([tmp_m, tmp_n], dim=2).tolist()
                 # they only use the first 4 during collision optimization (soley follwing UniAD implementation)
                 occ_mask_ = occ_mask[:, :4]
                 # but they have the currnent occupancy first, however it is never used so we can just set it to 0
@@ -409,32 +409,26 @@ class VADRunner:
 
         score_mask = bbox_results[0]["scores_3d"] >= self.score_treshold
 
-        if not score_mask.any():
-            objects_in_bev = np.empty((0, 5))
-            object_scores = np.empty((0))
-            object_classes = []
-            future_trajs = np.empty((0, 6, 6, 2))
-        else:
-            objects_in_bev = bbox_results[0]["boxes_3d"].bev[score_mask].cpu().numpy()
-            object_scores = bbox_results[0]["scores_3d"][score_mask].cpu().numpy()
-            object_classes = [
-                self.classes[i] for i in bbox_results[0]["labels_3d"][score_mask]
-            ]
-            future_trajs = future_trajs[score_mask].cpu().numpy()
-
-        return VADInferenceOutput(
-            trajectory=trajectory,
-            aux_outputs=VADAuxOutputs(
-                objects_in_bev=objects_in_bev.tolist(),
-                object_scores=object_scores.tolist(),
-                object_classes=object_classes,
-                segmentation=occ_mask[0, 0, 0].tolist()
-                if occ_mask is not None
-                else None,  # bev_h, bev_w
-                seg_grid_centers=seg_grid_centers,  # bev_h, bev_w, 2 [x, y]
-                future_trajs=future_trajs.tolist(),  # N x 6 modes x 6 future_timesteps x 2 (x, y)
-            ),
+        aux_outputs = (
+            VADAuxOutputs(
+                objects_in_bev=bbox_results[0]["boxes_3d"]
+                .bev[score_mask]
+                .cpu()
+                .numpy(),
+                object_scores=bbox_results[0]["scores_3d"][score_mask].cpu().numpy(),
+                object_classes=[
+                    self.classes[i] for i in bbox_results[0]["labels_3d"][score_mask]
+                ],
+                object_ids=-np.ones(
+                    (score_mask.sum().item(), 1)
+                ),  # VAD does not have ids
+                future_trajs=future_trajs[score_mask].cpu().numpy(),
+            )
+            if score_mask.any()
+            else VADAuxOutputs.empty()
         )
+
+        return VADInferenceOutput(trajectory=trajectory, aux_outputs=aux_outputs)
 
 
 def _get_sample_input(nusc, nusc_can, scene_name, sample) -> VADInferenceInput:

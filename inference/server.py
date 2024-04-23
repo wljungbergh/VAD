@@ -49,10 +49,7 @@ class InferenceAuxOutputs(BaseModel):
     objects_in_bev: Optional[List[List[float]]] = None  # N x [x, y, width, height, yaw]
     object_classes: Optional[List[str]] = None  # (N, )
     object_scores: Optional[List[float]] = None  # (N, )
-    segmentation: Optional[List[List[float]]] = None
-    seg_grid_centers: Optional[
-        List[List[List[float]]]
-    ] = None  # bev_h (200), bev_w (200), 2 (x & y)
+    object_ids: Optional[List[int]] = None  # (N, )
     future_trajs: Optional[List[List[List[List[float]]]]] = None  # N x T x [x, y]
 
 
@@ -61,7 +58,7 @@ class InferenceOutputs(BaseModel):
 
     trajectory: List[List[float]]
     """Predicted trajectory in the ego frame. A list of (x, y) points in BEV."""
-    aux_outputs: Optional[InferenceAuxOutputs] = None
+    aux_outputs: InferenceAuxOutputs
 
 
 @app.get("/alive")
@@ -75,11 +72,7 @@ async def infer(data: InferenceInputs) -> InferenceOutputs:
     vad_output = vad_runner.forward_inference(vad_input)
     return InferenceOutputs(
         trajectory=vad_output.trajectory.tolist(),
-        aux_outputs=(
-            InferenceAuxOutputs(**vad_output.aux_outputs.to_json())
-            if vad_output.aux_outputs is not None
-            else None
-        ),
+        aux_outputs=InferenceAuxOutputs(**vad_output.aux_outputs.to_json()),
     )
 
 
