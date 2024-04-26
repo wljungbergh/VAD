@@ -83,7 +83,7 @@ async def reset_runner() -> bool:
 
 
 def _build_vad_input(data: InferenceInputs) -> VADInferenceInput:
-    imgs = _pngs_to_numpy([data.images[c] for c in NUSCENES_CAM_ORDER])
+    imgs = _bytestr_to_numpy([data.images[c] for c in NUSCENES_CAM_ORDER])
     ego2world = np.array(data.ego2world)
     lidar2ego = np.array(data.calibration.lidar2ego)
     lidar2world = ego2world @ lidar2ego
@@ -106,12 +106,14 @@ def _build_vad_input(data: InferenceInputs) -> VADInferenceInput:
     )
 
 
-def _pngs_to_numpy(pngs: List[bytes]) -> np.ndarray:
+def _bytestr_to_numpy(pngs: List[bytes]) -> np.ndarray:
     """Convert a list of png bytes to a numpy array of shape (n, h, w, c)."""
     imgs = []
     for png in pngs:
-        img = Image.open(io.BytesIO(png))
-        imgs.append(np.array(img))
+        # using torch load as we use torch save on rendering node
+        img = torch.load(io.BytesIO(png)).clone()
+        imgs.append(img.numpy())
+
     return np.stack(imgs, axis=0)
 
 
