@@ -66,7 +66,7 @@ class VADAuxOutputs:
     object_classes: List[str]  # (N, 1)
     object_scores: np.ndarray  # (N, 1)
     object_ids: np.ndarray  # (N, ) This will be filled with -1 as VAD does not have IDs
-    future_trajs: np.ndarray  # (N, 6, 6, 5) (x, y, 0, 0, 0)
+    future_trajs: np.ndarray  # (N, 6, 6, 2) (x, y)
 
     def to_json(self) -> dict:
         n_objects = len(self.objects_in_bev)
@@ -85,7 +85,7 @@ class VADAuxOutputs:
             object_classes=[],
             object_scores=np.empty((0,)),
             object_ids=np.empty((0,)),
-            future_trajs=np.empty((0, 6, 6, 5)),
+            future_trajs=np.empty((0, 6, 6, 2)),
         )
 
 
@@ -410,12 +410,6 @@ class VADRunner:
 
         score_mask = bbox_results[0]["scores_3d"] >= self.score_treshold
 
-        ft = future_trajs[score_mask].cpu().numpy()
-        # ft should be (n, 6, 6, 5), but is now (n, 6, 6, 2). add 3 columns of zeros
-        future_trajs = np.concatenate(
-            [ft, np.zeros((ft.shape[0], ft.shape[2], ft.shape[2], 3))], axis=-1
-        )
-
         aux_outputs = (
             VADAuxOutputs(
                 objects_in_bev=bbox_results[0]["boxes_3d"]
@@ -429,7 +423,7 @@ class VADRunner:
                 object_ids=np.full(
                     shape=(score_mask.sum().item(),), fill_value=-1
                 ),  # VAD does not have IDs, so set to invalid value
-                future_trajs=future_trajs,  # we have already removed score mask
+                future_trajs=future_trajs[score_mask].cpu().numpy(),
             )
             if score_mask.any()
             else VADAuxOutputs.empty()
